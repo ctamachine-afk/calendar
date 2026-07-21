@@ -75,8 +75,6 @@
   .bar .lbl{font-size:12px;font-weight:600;color:var(--txt);text-overflow:ellipsis;overflow:hidden}
   .bar .lbl .rd{color:var(--muted);font-weight:500;margin-left:5px;font-size:11px}
   .bar.done .lbl{text-decoration:line-through;color:var(--muted)}
-  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px;font-size:12px;color:var(--muted)}
-  .legend span{display:flex;align-items:center;gap:5px} .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
   .callhint{color:var(--muted);font-size:12px;margin-top:10px}
   /* 일정 목록 */
   .blist{display:flex;flex-direction:column;gap:6px}
@@ -144,7 +142,7 @@
 
   <div class="tabs">
     <div class="tab active" data-tab="cal">📅 캘린더</div>
-    <div class="tab" data-tab="set">⚙️ 설정</div>
+    <div class="tab adminOnly" data-tab="set">⚙️ 설정</div>
   </div>
 
   <!-- ============ 캘린더 탭 ============ -->
@@ -160,7 +158,6 @@
       </div>
       <div class="cah" id="cah"></div>
       <div id="cal"></div>
-      <div class="legend" id="legend"></div>
       <div class="callhint" id="calHint">💡 빈 날짜를 <b>드래그</b>하면 학습 기간이 만들어지고, 어떤 법·회독인지 고를 수 있어요. 만들어진 막대를 <b>클릭</b>하면 수정·완료체크·삭제할 수 있습니다.</div>
     </div>
   </div>
@@ -378,6 +375,7 @@ function setEdit(on){
   document.getElementById("pinBtn").textContent   = on ? "잠그기" : "관리자";
   const inp=document.getElementById("pinInput");
   inp.style.display="none"; inp.value="";
+  if(!on) activateTab("cal");   // 잠기면 설정 탭이 숨겨지므로 캘린더로 되돌림
   const hint=document.getElementById("calHint");
   if(hint) hint.innerHTML = on
     ? `💡 빈 날짜를 <b>드래그</b>하면 학습 기간이 만들어지고, 막대를 <b>클릭</b>하면 수정·완료체크·삭제할 수 있어요.`
@@ -414,7 +412,7 @@ function roundProgress(r){let t=0,d=0;state.blocks.forEach(b=>{if(b.round===r){c
 function overallProgress(){let t=0,d=0;state.blocks.forEach(b=>{const c=dayCount(b);t+=c;if(b.done)d+=c;});return t?d/t:0;}
 
 /* ---------- 렌더 ---------- */
-function render(){renderStats();renderRounds();renderBlist();renderLegend();renderChapterAdmin();renderCalendar();}
+function render(){renderStats();renderRounds();renderBlist();renderChapterAdmin();renderCalendar();}
 
 function escAttr(s){return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
 function renderChapterAdmin(){
@@ -495,10 +493,6 @@ function renderBlist(){
     ${b.done?'<span style="color:var(--s7)">✓ 완료</span>':''}
     <span class="del" data-id="${b.id}">✕</span></div>`).join("");
   el.querySelectorAll(".del").forEach(x=>x.onclick=()=>{state.blocks=state.blocks.filter(b=>b.id!=x.dataset.id);saveState();render();});
-}
-function renderLegend(){
-  document.getElementById("legend").innerHTML="<b class='muted'>범례&nbsp;</b>"+
-    CURRICULUM.map(s=>`<span><i style="background:${s.color}"></i>${s.subject}</span>`).join("");
 }
 
 let viewDate;
@@ -822,11 +816,12 @@ document.getElementById("mCancel").onclick=closeModal;
 document.getElementById("backdrop").onclick=e=>{if(e.target.id==="backdrop")closeModal();};
 
 /* ---------- 탭 / 이벤트 ---------- */
-document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
-  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+function activateTab(name){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.dataset.tab===name));
   document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
-  t.classList.add("active");document.getElementById("page-"+t.dataset.tab).classList.add("active");
-});
+  const p=document.getElementById("page-"+name); if(p)p.classList.add("active");
+}
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>activateTab(t.dataset.tab));
 document.getElementById("prev").onclick=()=>{viewDate=new Date(viewDate.getFullYear(),viewDate.getMonth()-1,1);state.viewYM={y:viewDate.getFullYear(),m:viewDate.getMonth()};saveLocal();renderCalendar();};
 document.getElementById("next").onclick=()=>{viewDate=new Date(viewDate.getFullYear(),viewDate.getMonth()+1,1);state.viewYM={y:viewDate.getFullYear(),m:viewDate.getMonth()};saveLocal();renderCalendar();};
 document.getElementById("todayBtn").onclick=()=>{const t=new Date();viewDate=new Date(t.getFullYear(),t.getMonth(),1);state.viewYM={y:viewDate.getFullYear(),m:viewDate.getMonth()};saveLocal();renderCalendar();};
