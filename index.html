@@ -108,6 +108,19 @@
   .chaprange{display:flex;align-items:center;gap:8px;margin-bottom:8px}
   .chaprange .rlbl{font-size:12px;color:var(--muted);flex:0 0 auto}
   .chaprange select{flex:1;min-width:0;font-size:12.5px;padding:6px 8px}
+  /* 질문 배정 */
+  .chaplist li .qa{float:right;font-size:11.5px;color:var(--muted);margin-left:8px;white-space:nowrap}
+  .chaplist li .qa b{color:var(--accent);font-weight:700;margin:0 2px}
+  .chaplist li .qa .who{color:var(--txt);font-weight:600}
+  .qarow{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .qarow .btn{flex:0 0 auto}
+  .qanote{font-size:11px;color:var(--muted);line-height:1.4}
+  /* 스터디원 관리 */
+  .memrows{display:flex;flex-direction:column;gap:6px;max-width:420px}
+  .memrow{display:flex;align-items:center;gap:6px}
+  .memnum{width:18px;text-align:right;color:var(--muted);font-size:11px;flex:0 0 auto}
+  .meminput{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:6px 9px;font-size:13px}
+  .meminput:focus{border-color:var(--accent);outline:none}
   .chadmin{display:flex;flex-wrap:wrap;gap:12px}
   .chcard{flex:1;min-width:240px;background:var(--panel2);border:1px solid var(--line);border-radius:11px;padding:10px 12px}
   .chcard .ch{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13px;margin-bottom:8px}
@@ -206,12 +219,31 @@
       <div class="callhint">1부 = 국세기본법 · 소득세법 · 상속세및증여세법 &nbsp;/&nbsp; 2부 = 부가가치세법 · 개별소비세법 · 조세특례제한법 · 지방세법</div>
     </div>
 
+    <div class="panel adminOnly">
+      <div class="secttl">백업 / 복원</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <button class="btn ghost sm" id="bkDl">⬇ 백업 파일 내려받기</button>
+        <label class="btn ghost sm" style="margin:0"><input type="file" id="bkUp" accept=".json" style="display:none">⬆ 백업 파일로 복원</label>
+      </div>
+      <div class="callhint">일정·스터디원·챕터를 JSON 파일 하나로 저장합니다. <b>중요한 변경 전에 한 번씩 받아두세요.</b></div>
+      <div class="secttl" style="margin-top:16px">이전 버전으로 되돌리기</div>
+      <div id="histList"></div>
+      <div class="callhint">저장할 때마다 직전 상태가 서버에 자동 보관됩니다(최근 10개). 실수로 지웠을 때 여기서 되돌리세요.</div>
+    </div>
+
     <div class="stats" id="stats"></div>
 
     <div class="panel">
       <div class="secttl">회독별 진행률</div>
       <div class="rounds" id="roundcards"></div>
       <div id="noRounds" class="muted" style="font-size:13px">아직 등록된 일정이 없어요. 캘린더에서 드래그해 만들어 보세요.</div>
+    </div>
+
+    <div class="panel adminOnly">
+      <div class="secttl">스터디원 관리</div>
+      <div class="memrows" id="memRows"></div>
+      <button class="btn ghost sm" id="memAdd" style="margin-top:10px">+ 스터디원 추가</button>
+      <div class="callhint">여기 등록한 순서와 무관하게, 일정마다 <b>질문 순서 뽑기</b>를 누르면 순서가 랜덤으로 섞입니다. 2명 이상 등록해야 질문 배정을 만들 수 있어요.</div>
     </div>
 
     <div class="panel adminOnly">
@@ -252,6 +284,10 @@
         <select id="mChapTo"></select>
       </div>
       <div class="chaplist" id="mChapters"></div>
+      <div class="qarow">
+        <button class="btn ghost sm adminOnly" id="mRollQA" type="button">🎲 질문 순서 뽑기</button>
+        <span class="qanote" id="mQANote"></span>
+      </div>
     </div>
     <div class="two">
       <div class="mfld" style="flex:1"><label>회독</label><input type="number" id="mRound" min="1" max="9" value="1"></div>
@@ -352,9 +388,54 @@ function chapNames(b){
   return chs.slice(f-1,t);
 }
 
+/* ---------- 스터디원 / 질문 배정 ---------- */
+const members=()=>state.members||(state.members=[]);
+const memberName=id=>{const m=members().find(x=>x.id===id);return m?(m.name||"(이름없음)"):"(삭제됨)";};
+function shuffled(a){const r=a.slice();for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
+function permute(arr){
+  if(arr.length<=1)return [arr.slice()];
+  const out=[];
+  arr.forEach((v,i)=>permute(arr.slice(0,i).concat(arr.slice(i+1))).forEach(p=>out.push([v].concat(p))));
+  return out;
+}
+/* 같은 과목·같은 챕터에서 예전에 답변/질문한 사람 기억 (지금 뽑는 일정은 제외) */
+function qaHistory(subject,excludeId){
+  const ans={},ask={};
+  state.blocks.forEach(b=>{
+    if(b.id==excludeId||b.subject!==subject)return;
+    (b.qa||[]).forEach(x=>{
+      (ans[x.ch]=ans[x.ch]||new Set()).add(x.a);
+      (ask[x.ch]=ask[x.ch]||new Set()).add(x.q);
+    });
+  });
+  return {ans,ask};
+}
+/* 스터디원 순서를 랜덤으로 섞어 1→2, 2→3, 3→1 순환 배정.
+   여러 순서 후보 중 '이전 답변자와 겹치지 않는' 것을 우선 선택한다. */
+function buildQA(from,to,subject,excludeId){
+  const ids=members().filter(m=>(m.name||"").trim()).map(m=>m.id);
+  if(ids.length<2)return null;
+  const n=ids.length;
+  const h=qaHistory(subject,excludeId);
+  const cands = n<=6 ? permute(ids) : Array.from({length:400},()=>shuffled(ids));
+  let best=null,bestScore=Infinity,bestRep=0;
+  shuffled(cands).forEach(order=>{
+    let score=0,rep=0;
+    for(let ch=from,i=0; ch<=to; ch++,i++){
+      const q=order[i%n], a=order[(i+1)%n];
+      if(h.ans[ch]&&h.ans[ch].has(a)){score+=10;rep++;}  // 같은 챕터 답변자 반복 → 강한 감점
+      if(h.ask[ch]&&h.ask[ch].has(q))score+=1;           // 질문자 반복 → 약한 감점
+    }
+    if(score<bestScore){bestScore=score;best=order;bestRep=rep;}
+  });
+  const qa=[];
+  for(let ch=from,i=0; ch<=to; ch++,i++) qa.push({ch,q:best[i%n],a:best[(i+1)%n]});
+  return {qa,repeats:bestRep};
+}
+
 const CHAP_VER="core2026-v1"; // 기본 챕터 버전 (바뀌면 기본값 재적용)
 let state=loadState()||defaultState();
-function defaultState(){return {exam:"",defRound:1,viewYM:null,blocks:[],chapters:JSON.parse(JSON.stringify(DEFAULT_CHAPTERS)),chaptersVer:CHAP_VER};}
+function defaultState(){return {exam:"",defRound:1,viewYM:null,blocks:[],members:[],chapters:JSON.parse(JSON.stringify(DEFAULT_CHAPTERS)),chaptersVer:CHAP_VER};}
 function loadState(){try{const s=JSON.parse(localStorage.getItem(STORE_KEY));if(s){if(!s.blocks)s.blocks=[];if(!s.chapters||s.chaptersVer!==CHAP_VER){s.chapters=JSON.parse(JSON.stringify(DEFAULT_CHAPTERS));s.chaptersVer=CHAP_VER;localStorage.setItem(STORE_KEY,JSON.stringify(s));}}return s;}catch(e){return null;}}
 function saveLocal(){localStorage.setItem(STORE_KEY,JSON.stringify(state));}
 function saveState(){saveLocal();pushRemote();}
@@ -362,22 +443,40 @@ function saveState(){saveLocal();pushRemote();}
 /* ---------- 공유(Firestore) 동기화 ---------- */
 const firebaseEnabled = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.projectId);
 let db=null, auth=null, pushT=null, applyingRemote=false;
+let lastRemote=null;              // 서버에서 마지막으로 받은 문서 (되돌리기 이력용)
+const HIST_MAX=10;                // 보관할 이전 버전 개수
 function docRef(){return db.collection("calendars").doc(ROOM);}
+const clone=o=>JSON.parse(JSON.stringify(o));
+/* 서버에 있던 직전 상태를 이력으로 쌓는다 (덮어쓰기 사고 대비) */
+function buildHist(){
+  if(!lastRemote)return [];
+  const prev=Array.isArray(lastRemote._hist)?lastRemote._hist:[];
+  if(!(lastRemote.blocks||[]).length && !(lastRemote.members||[]).length) return prev.slice(0,HIST_MAX);
+  const entry={at:lastRemote._updated||Date.now(),blocks:lastRemote.blocks||[],members:lastRemote.members||[]};
+  return [entry,...prev].slice(0,HIST_MAX);
+}
 function pushRemote(){
   if(!db||!canEdit||applyingRemote)return;          // 관리자 편집일 때만, 원격 적용 중엔 재전송 안 함
+  // ⚠️ 예약 '시점'의 데이터를 즉시 복사해 둔다.
+  //    (타이머가 깨어날 때 state를 다시 읽으면, 그 사이 바뀐 값이 서버를 덮어쓸 수 있음)
+  const payload={
+    blocks:clone(state.blocks||[]), chapters:clone(state.chapters||{}), chaptersVer:state.chaptersVer,
+    members:clone(state.members||[]), exam:state.exam||"", defRound:state.defRound||1
+  };
   clearTimeout(pushT);
   pushT=setTimeout(()=>{
-    docRef().set({
-      blocks:state.blocks, chapters:state.chapters, chaptersVer:state.chaptersVer,
-      exam:state.exam||"", defRound:state.defRound||1, _updated:Date.now()
-    }).catch(e=>console.warn("동기화 저장 실패:",e));
+    payload._updated=Date.now();
+    payload._hist=buildHist();
+    docRef().set(payload).catch(e=>console.warn("동기화 저장 실패:",e));
   },350);                                            // 드래그·타이핑 중 과도한 쓰기 방지
 }
 function applyRemote(d){
   applyingRemote=true;
+  lastRemote=d;
   state.blocks=Array.isArray(d.blocks)?d.blocks:[];
   state.chapters=(d.chapters&&Object.keys(d.chapters).length)?d.chapters:JSON.parse(JSON.stringify(DEFAULT_CHAPTERS));
   state.chaptersVer=d.chaptersVer||CHAP_VER;
+  state.members=Array.isArray(d.members)?d.members:[];
   state.exam=d.exam||"";
   if(typeof d.defRound==="number")state.defRound=d.defRound;
   saveLocal(); syncInputs(); render();
@@ -447,7 +546,83 @@ function roundProgress(r){let t=0,d=0;state.blocks.forEach(b=>{if(b.round===r){c
 function overallProgress(){let t=0,d=0;state.blocks.forEach(b=>{const c=dayCount(b);t+=c;if(b.done)d+=c;});return t?d/t:0;}
 
 /* ---------- 렌더 ---------- */
-function render(){renderStats();renderRounds();renderBlist();renderChapterAdmin();renderCalendar();}
+function render(){renderStats();renderRounds();renderBlist();renderMembers();renderHistory();renderChapterAdmin();renderCalendar();}
+
+function renderMembers(){
+  const el=document.getElementById("memRows");
+  const ms=members();
+  el.innerHTML = ms.length
+    ? ms.map((m,i)=>`<div class="memrow">
+        <span class="memnum">${i+1}</span>
+        <input class="meminput" value="${escAttr(m.name||"")}" data-i="${i}" placeholder="이름">
+        <button class="chbtn del" data-i="${i}" title="삭제">✕</button>
+      </div>`).join("")
+    : `<div class="muted" style="font-size:13px">아직 등록된 스터디원이 없어요.</div>`;
+  el.querySelectorAll(".meminput").forEach(inp=>{
+    inp.oninput=()=>{ ms[+inp.dataset.i].name=inp.value; saveState(); };
+    inp.onkeydown=e=>{ if(e.key==="Enter"){e.preventDefault();addMember();} };
+  });
+  el.querySelectorAll(".chbtn.del").forEach(b=>b.onclick=()=>{
+    ms.splice(+b.dataset.i,1); saveState(); renderMembers();
+  });
+}
+/* ---------- 백업 / 복원 ---------- */
+function exportBackup(){
+  const data={_type:"sebup-calendar-backup",_ver:1,_at:new Date().toISOString(),
+    blocks:state.blocks||[],members:state.members||[],
+    chapters:state.chapters||{},chaptersVer:state.chaptersVer,
+    exam:state.exam||"",defRound:state.defRound||1};
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));
+  a.download=`세법학캘린더_백업_${iso(new Date())}.json`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function importBackup(file){
+  const rd=new FileReader();
+  rd.onload=ev=>{
+    try{
+      const d=JSON.parse(ev.target.result);
+      if(!d||!Array.isArray(d.blocks))throw new Error("백업 파일 형식이 아니에요.");
+      if(!confirm(`백업으로 되돌립니다.\n\n· 일정 ${d.blocks.length}개\n· 스터디원 ${(d.members||[]).length}명\n· 백업 시각 ${d._at||"?"}\n\n현재 내용을 덮어씁니다. 진행할까요?`))return;
+      state.blocks=d.blocks;
+      state.members=Array.isArray(d.members)?d.members:[];
+      if(d.chapters&&Object.keys(d.chapters).length){state.chapters=d.chapters;state.chaptersVer=d.chaptersVer||CHAP_VER;}
+      state.exam=d.exam||"";
+      if(typeof d.defRound==="number")state.defRound=d.defRound;
+      saveState(); syncInputs(); render();
+      alert("복원했어요.");
+    }catch(err){alert("복원 실패: "+err.message);}
+  };
+  rd.readAsText(file);
+}
+function renderHistory(){
+  const el=document.getElementById("histList");
+  if(!el)return;
+  const h=(lastRemote&&Array.isArray(lastRemote._hist))?lastRemote._hist:[];
+  el.innerHTML = h.length
+    ? `<div class="blist">`+h.map((x,i)=>`<div class="brow">
+        <span class="muted">${new Date(x.at).toLocaleString("ko-KR")}</span>
+        <b>일정 ${(x.blocks||[]).length}개</b>
+        <span class="muted">스터디원 ${(x.members||[]).length}명</span>
+        <button class="btn ghost sm" data-h="${i}" style="margin-left:auto">되돌리기</button>
+      </div>`).join("")+`</div>`
+    : `<div class="muted" style="font-size:13px">아직 보관된 이전 버전이 없어요. (관리자가 저장할 때마다 쌓입니다)</div>`;
+  el.querySelectorAll("button[data-h]").forEach(b=>b.onclick=()=>{
+    const x=h[+b.dataset.h];
+    if(!x)return;
+    if(!confirm(`${new Date(x.at).toLocaleString("ko-KR")} 시점으로 되돌립니다.\n일정 ${(x.blocks||[]).length}개 · 스터디원 ${(x.members||[]).length}명\n\n지금 내용을 덮어씁니다. 진행할까요?`))return;
+    state.blocks=clone(x.blocks||[]);
+    state.members=clone(x.members||[]);
+    saveState(); render();
+    alert("되돌렸어요.");
+  });
+}
+function addMember(){
+  members().push({id:"m"+Date.now()+Math.floor(Math.random()*1000),name:""});
+  saveState(); renderMembers();
+  const inputs=document.querySelectorAll("#memRows .meminput");
+  if(inputs.length) inputs[inputs.length-1].focus();
+}
 
 function escAttr(s){return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
 function renderChapterAdmin(){
@@ -725,6 +900,8 @@ document.addEventListener("touchmove",e=>{ if(drag||barDrag)e.preventDefault(); 
 let editingId=null;
 let chapSel={from:1,to:1}; // 모달에서 현재 선택된 파트 챕터 범위(1-index)
 let modalRO=false;         // 모달 보기 전용 여부
+let modalQA=null;          // 모달에서 편집 중인 질문 배정 [{ch,q,a}]
+let lastRepeats=0;         // 직전 뽑기에서 이전 답변자와 겹친 챕터 수
 function setModalReadonly(ro){
   modalRO=ro;
   ["mSubject","mRound","mParts","mPart","mStart","mEnd","mDone","mChapFrom","mChapTo"]
@@ -769,8 +946,46 @@ function renderChapSection(){
   document.getElementById("mChapters").innerHTML= total===0
     ? `<div class="none">등록된 챕터가 없어요. 설정 탭에서 엑셀로 추가하세요.</div>`
     : (list.length
-        ? `<ol start="${offset+1}">${list.map(c=>`<li>${esc(c)}</li>`).join("")}</ol>`
+        ? `<ol start="${offset+1}">${list.map((c,i)=>{
+            const chNo=offset+i+1;
+            const x=modalQA&&modalQA.find(v=>v.ch===chNo);
+            const tag=x?`<span class="qa"><span class="who">${esc(memberName(x.q))}</span><b>→</b><span class="who">${esc(memberName(x.a))}</span></span>`:"";
+            return `<li>${tag}${esc(c)}</li>`;
+          }).join("")}</ol>`
         : `<div class="none">선택된 챕터가 없어요.</div>`);
+  renderQANote();
+}
+/* 질문 배정 안내문구 */
+function renderQANote(){
+  const n=members().filter(m=>(m.name||"").trim()).length;
+  const note=document.getElementById("mQANote");
+  if(!note)return;
+  note.innerHTML = n<2
+    ? `설정 탭에서 <b>스터디원을 2명 이상</b> 등록하면 질문 순서를 뽑을 수 있어요.`
+    : (modalQA&&modalQA.length
+        ? `저장됨 · 다시 누르기 전까지 유지돼요.`
+          + (lastRepeats<0 ? ``
+             : lastRepeats>0
+              ? ` <span style="color:var(--s3)">스터디원이 적어 ${lastRepeats}개 챕터는 이전 답변자와 겹칩니다.</span>`
+              : ` 같은 챕터의 <b>이전 답변자</b>는 피해서 배정했어요.`)
+        : `누르면 스터디원 순서를 랜덤으로 섞어 배정해요. 같은 챕터를 전에 답변한 사람은 피합니다.`);
+}
+/* 현재 모달의 챕터 범위에 질문 배정 생성 → 즉시 저장 */
+function rollQA(){
+  const subj=document.getElementById("mSubject").value;
+  const parts=Math.max(1,Number(document.getElementById("mParts").value)||1);
+  const total=effChapters(subj).length;
+  if(!total){ alert("이 과목에 등록된 챕터가 없어요."); return; }
+  const from=(parts>1)?chapSel.from:1, to=(parts>1)?chapSel.to:total;
+  const r=buildQA(from,to,subj,editingId);
+  if(!r){ alert("스터디원을 2명 이상 등록해 주세요. (설정 탭 → 스터디원 관리)"); return; }
+  modalQA=r.qa; lastRepeats=r.repeats;
+  // 이미 등록된 일정이면 뽑는 즉시 저장 (취소해도 유지)
+  if(editingId){
+    const b=state.blocks.find(x=>x.id==editingId);
+    if(b){ b.qa=modalQA.map(x=>({...x})); saveState(); }
+  }
+  renderChapSection();
 }
 function onChapSelChange(which){
   let from=Number(document.getElementById("mChapFrom").value)||1;
@@ -838,6 +1053,10 @@ document.getElementById("mPart").oninput=()=>{continued=false;applyAutoChap();re
 document.getElementById("mRound").oninput=()=>{refreshChap();updatePartHint();};
 document.getElementById("mChapFrom").onchange=()=>onChapSelChange("from");
 document.getElementById("mChapTo").onchange=()=>onChapSelChange("to");
+document.getElementById("mRollQA").onclick=rollQA;
+document.getElementById("memAdd").onclick=addMember;
+document.getElementById("bkDl").onclick=exportBackup;
+document.getElementById("bkUp").onchange=e=>{const f=e.target.files[0]; if(f)importBackup(f); e.target.value="";};
 
 function openCreate(start,end){
   editingId=null;
@@ -852,6 +1071,7 @@ function openCreate(start,end){
   document.getElementById("mDone").checked=false;
   document.getElementById("mDelete").style.display="none";
   partsManual=false;
+  modalQA=null; lastRepeats=-1;
   refreshChap();
   setModalReadonly(false);
   updatePartHint();
@@ -870,6 +1090,7 @@ function openEdit(id,readonly){
   document.getElementById("mDone").checked=!!b.done;
   document.getElementById("mDelete").style.display=readonly?"none":"inline-block";
   partsManual=false;continued=false;
+  modalQA=Array.isArray(b.qa)?b.qa.map(x=>({...x})):null; lastRepeats=-1;
   if((b.parts||1)>1&&b.chapFrom)chapSel={from:b.chapFrom,to:b.chapTo};else applyAutoChap();
   renderChapSection();
   setModalReadonly(!!readonly);
@@ -900,11 +1121,14 @@ document.getElementById("mSave").onclick=()=>{
     chapFrom=Math.min(Math.max(1,chapSel.from),total);
     chapTo=Math.min(Math.max(chapFrom,chapSel.to),total);
   }
+  // 질문 배정은 현재 챕터 범위에 해당하는 것만 저장
+  const qFrom=chapFrom||1, qTo=chapTo||total;
+  const qa=(modalQA||[]).filter(x=>x.ch>=qFrom&&x.ch<=qTo);
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    Object.assign(b,{subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo});
+    Object.assign(b,{subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null});
   }else{
-    state.blocks.push({id:Date.now()+Math.floor(Math.random()*1000),subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo});
+    state.blocks.push({id:Date.now()+Math.floor(Math.random()*1000),subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null});
     state.defRound=round;
   }
   saveState();closeModal();render();
