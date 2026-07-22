@@ -14,7 +14,9 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--txt);
     font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Segoe UI",sans-serif;line-height:1.45;
-    -webkit-user-select:none;user-select:none}
+    -webkit-user-select:none;user-select:none;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+  button,.tab,.daycell,.bar,.brow .del,a.mini{touch-action:manipulation}
   .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 80px}
   h1{font-size:22px;margin:0 0 2px;font-weight:700;letter-spacing:-.3px}
   .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
@@ -127,6 +129,36 @@
   body.locked .daycell{cursor:default}
   body.locked .bar{cursor:pointer}
   body.locked .bar .rz{display:none!important}
+  /* 터치(굵은 포인터) 기기 */
+  @media (pointer:coarse){
+    .bar .rz{width:16px;background:rgba(255,255,255,.13)}
+    .bar{height:24px}
+    .brow .del{font-size:22px;padding:0 4px}
+    .chbtn{width:30px;height:32px}
+  }
+  /* 폰 화면 */
+  @media (max-width:560px){
+    .wrap{padding:14px 10px 64px}
+    h1{font-size:19px} .sub{font-size:12px;margin-bottom:12px}
+    .tab{padding:9px 13px;font-size:13px}
+    .panel{padding:12px 12px;border-radius:12px}
+    input,select{font-size:16px}          /* iOS 자동 확대 방지 */
+    .chinput{font-size:16px}
+    .calhdr{gap:8px}
+    .calhdr .mtitle{font-size:15px}
+    .btn.sm{padding:7px 10px;font-size:12.5px}
+    .cah{gap:3px} .wgrid{gap:3px} .wbars{gap:3px}
+    .cah div{font-size:11px}
+    .daycell{padding:4px 5px;border-radius:9px}
+    .bar{height:22px;padding:0 6px;gap:5px;border-left-width:3px}
+    .bar .cbx{width:12px;height:12px}
+    .bar .lbl{font-size:11px}
+    .bar .lbl .rd{margin-left:4px;font-size:10px}
+    .modal{padding:16px 15px;max-height:88vh;overflow:auto;-webkit-overflow-scrolling:touch}
+    .modal .two{gap:7px}
+    .stat{min-width:calc(50% - 5px)}
+    .rcard{min-width:100%}
+  }
 </style>
 </head>
 <body>
@@ -377,9 +409,12 @@ function setEdit(on){
   inp.style.display="none"; inp.value="";
   if(!on) activateTab("cal");   // 잠기면 설정 탭이 숨겨지므로 캘린더로 되돌림
   const hint=document.getElementById("calHint");
+  const touch=window.matchMedia("(pointer:coarse)").matches;
   if(hint) hint.innerHTML = on
-    ? `💡 빈 날짜를 <b>드래그</b>하면 학습 기간이 만들어지고, 막대를 <b>클릭</b>하면 수정·완료체크·삭제할 수 있어요.`
-    : `👀 <b>보기 전용</b> 캘린더예요. 관리자는 위 <b>관리자</b> 버튼에서 비밀번호로 로그인하면 수정할 수 있어요. 막대를 클릭하면 상세(챕터)를 볼 수 있습니다.`;
+    ? (touch
+        ? `💡 날짜를 <b>탭</b>하면 그 하루로 일정이 만들어지고, <b>꾹 눌렀다가 밀면</b> 여러 날을 한 번에 고를 수 있어요. 막대는 <b>탭</b>하면 수정·완료체크·삭제, <b>꾹 눌렀다가 밀면</b> 기간이 옮겨집니다.`
+        : `💡 빈 날짜를 <b>드래그</b>하면 학습 기간이 만들어지고, 막대를 <b>클릭</b>하면 수정·완료체크·삭제할 수 있어요.`)
+    : `👀 <b>보기 전용</b> 캘린더예요. 관리자는 위 <b>관리자</b> 버튼에서 비밀번호로 로그인하면 수정할 수 있어요. 막대를 ${touch?"탭":"클릭"}하면 상세(챕터)를 볼 수 있습니다.`;
 }
 function tryUnlock(){
   const inp=document.getElementById("pinInput"), btn=document.getElementById("pinBtn");
@@ -501,6 +536,8 @@ function initialMonth(){
   const t=new Date();return new Date(t.getFullYear(),t.getMonth(),1);
 }
 function renderCalendar(){
+  const compact=window.matchMedia("(max-width:560px)").matches;
+  const LANE_H=compact?25:30, TOP_PAD=compact?24:28;
   document.getElementById("cah").innerHTML=DOW_LABELS.map((d,i)=>
     `<div style="color:${i===0?'#ff6b9d':i===6?'#4f9dff':'var(--muted)'}">${d}</div>`).join("");
   if(!viewDate) viewDate=initialMonth();
@@ -530,7 +567,7 @@ function renderCalendar(){
     const laneEnd=[];
     segs.forEach(sg=>{let ln=0;while(ln<laneEnd.length&&laneEnd[ln]>=sg.s)ln++;laneEnd[ln]=sg.e;sg.lane=ln;});
     const nLanes=Math.max(1,laneEnd.length);
-    const cellH=28+nLanes*30;
+    const cellH=TOP_PAD+nLanes*LANE_H;
     const dayrow=week.map(dt=>{
       if(!dt)return `<div class="daycell blank"></div>`;
       return `<div class="daycell ${iso(dt)===todayIso?'today':''}" data-date="${iso(dt)}" style="min-height:${cellH}px"><span class="num">${dt.getDate()}</span></div>`;
@@ -546,18 +583,21 @@ function renderCalendar(){
         <span class="cbx"></span><span class="lbl">${sg.b.subject}${partTxt(sg.b)}<span class="rd">${sg.b.round}회독${cl?" · "+cl:""}</span></span>
         ${atEnd?'<span class="rz r"></span>':''}</div>`;
     }).join("");
-    html+=`<div class="week"><div class="wgrid">${dayrow}</div><div class="wbars">${barsHtml}</div></div>`;
+    html+=`<div class="week"><div class="wgrid">${dayrow}</div><div class="wbars" style="top:${TOP_PAD}px;grid-auto-rows:${LANE_H-4}px">${barsHtml}</div></div>`;
   }
   const cal=document.getElementById("cal");
   cal.innerHTML=html;
   cal.querySelectorAll(".bar").forEach(el=>{
     const id=el.dataset.id;
-    const lz=el.querySelector(".rz.l"), rz=el.querySelector(".rz.r");
-    if(lz) lz.onmousedown=e=>startBarDrag(e,id,"l");
-    if(rz) rz.onmousedown=e=>startBarDrag(e,id,"r");
-    el.onmousedown=e=>{ if(e.target.classList.contains("rz"))return; startBarDrag(e,id,"move"); };
+    el.onpointerdown=e=>{
+      const t=e.target.classList.contains("rz") ? (e.target.classList.contains("l")?"l":"r") : "move";
+      startBarPress(e,id,t);
+    };
   });
 }
+/* 화면 회전·크기 변경 시 레인 높이 재계산 */
+let resizeT=null;
+window.addEventListener("resize",()=>{clearTimeout(resizeT);resizeT=setTimeout(renderCalendar,150);});
 
 /* ---------- 드래그로 기간 선택 ---------- */
 let drag=null;
@@ -569,42 +609,82 @@ function paintSel(){
   });
 }
 function clearSel(){document.querySelectorAll(".daycell.sel").forEach(c=>c.classList.remove("sel"));}
-(function bindDrag(){
-  const cal=document.getElementById("cal");
-  cal.addEventListener("mousedown",e=>{
-    if(!canEdit)return;
-    const cell=e.target.closest(".daycell");if(!cell||!cell.dataset.date)return;
-    e.preventDefault();drag={a:cell.dataset.date,b:cell.dataset.date};
-    document.body.classList.add("dragging");paintSel();
-  });
-  cal.addEventListener("mouseover",e=>{
-    if(!drag)return;const cell=e.target.closest(".daycell");if(!cell||!cell.dataset.date)return;
-    drag.b=cell.dataset.date;paintSel();
-  });
-  document.addEventListener("mouseup",()=>{
-    if(!drag)return;document.body.classList.remove("dragging");
-    const a=drag.a,b=drag.b;drag=null;
-    const s=a<b?a:b,en=a<b?b:a;clearSel();
-    openCreate(s,en);
-  });
-})();
 
-/* ---------- 막대 리사이즈 / 이동 (마우스) ---------- */
+/* ---------- 포인터(마우스+터치) 입력 ----------
+   마우스: 예전처럼 바로 드래그.
+   터치  : 탭 = 하루 일정 만들기 / 막대 열기,  길게 누른 뒤 드래그 = 기간 선택·막대 이동 */
 let barDrag=null;
+const LONG_PRESS=320, MOVE_TOL=12;
+let cellPress=null, barPress=null;   // 터치 롱프레스 대기 상태
+function clearCellPress(){ if(cellPress){clearTimeout(cellPress.timer);cellPress=null;} }
+function clearBarPress(){ if(barPress){clearTimeout(barPress.timer);barPress=null;} }
+function buzz(){ try{ navigator.vibrate&&navigator.vibrate(15); }catch(_){} }
+function far(p,e){ return Math.hypot(e.clientX-p.x,e.clientY-p.y)>MOVE_TOL; }
+/* 터치는 기본적으로 눌린 요소에 포인터가 묶이므로(암묵적 캡처) 풀어줘야
+   손가락 아래 날짜칸을 elementFromPoint로 계속 추적할 수 있다 */
+function releaseCapture(e){
+  try{ if(e.target.hasPointerCapture&&e.target.hasPointerCapture(e.pointerId)) e.target.releasePointerCapture(e.pointerId); }catch(_){}
+}
 function dateFromPoint(x,y){
   const el=document.elementFromPoint(x,y);
   const c=el&&el.closest?el.closest(".daycell"):null;
   return c&&c.dataset.date?c.dataset.date:null;
 }
-function startBarDrag(e,id,type){
-  e.preventDefault();e.stopPropagation();
-  const b=state.blocks.find(x=>x.id==id);if(!b)return;
-  if(!canEdit){ openEdit(id,true); return; }   // 보기 전용: 상세만 열기
-  document.body.classList.add("dragging","bardragging");
-  const grab=dateFromPoint(e.clientX,e.clientY)||b.start;
-  barDrag={id,type,origStart:b.start,origEnd:b.end,grab,moved:false};
+
+/* 빈 날짜 → 기간 선택 */
+(function bindDrag(){
+  const cal=document.getElementById("cal");
+  cal.addEventListener("pointerdown",e=>{
+    if(!canEdit)return;
+    const cell=e.target.closest(".daycell");if(!cell||!cell.dataset.date)return;
+    const date=cell.dataset.date;
+    if(e.pointerType==="touch"||e.pointerType==="pen"){
+      releaseCapture(e);
+      cellPress={date,x:e.clientX,y:e.clientY,timer:setTimeout(()=>{
+        cellPress.timer=null;
+        drag={a:date,b:date};document.body.classList.add("dragging");paintSel();buzz();
+      },LONG_PRESS)};
+    }else{
+      e.preventDefault();
+      drag={a:date,b:date};document.body.classList.add("dragging");paintSel();
+    }
+  });
+  cal.addEventListener("contextmenu",e=>{ if(drag||barDrag||cellPress||barPress)e.preventDefault(); });
+})();
+
+/* 막대 이동 / 리사이즈 */
+function startBarPress(e,id,type){
+  e.stopPropagation();
+  if(!state.blocks.some(x=>x.id==id))return;
+  if(e.pointerType==="touch"||e.pointerType==="pen"){
+    releaseCapture(e);
+    barPress={id,type,x:e.clientX,y:e.clientY,timer:null};
+    if(!canEdit)return;                       // 보기 전용은 탭으로 상세만
+    barPress.timer=setTimeout(()=>{ barPress.timer=null; beginBarDrag(id,type,barPress.x,barPress.y); buzz(); },LONG_PRESS);
+  }else{
+    e.preventDefault();
+    if(!canEdit){ openEdit(id,true); return; }
+    beginBarDrag(id,type,e.clientX,e.clientY);
+  }
 }
-document.addEventListener("mousemove",e=>{
+function beginBarDrag(id,type,x,y){
+  const b=state.blocks.find(v=>v.id==id);if(!b)return;
+  document.body.classList.add("dragging","bardragging");
+  barDrag={id,type,origStart:b.start,origEnd:b.end,grab:dateFromPoint(x,y)||b.start,moved:false};
+}
+function endBarDrag(){
+  document.body.classList.remove("dragging","bardragging");
+  const bd=barDrag;barDrag=null;return bd;
+}
+
+document.addEventListener("pointermove",e=>{
+  if(cellPress&&!drag&&far(cellPress,e)) clearCellPress();
+  if(barPress&&!barDrag&&far(barPress,e)) clearBarPress();
+  if(drag){
+    const cur=dateFromPoint(e.clientX,e.clientY);
+    if(cur&&cur!==drag.b){drag.b=cur;paintSel();}
+    return;
+  }
   if(!barDrag)return;
   const b=state.blocks.find(x=>x.id==barDrag.id);if(!b)return;
   const cur=dateFromPoint(e.clientX,e.clientY);if(!cur)return;
@@ -613,13 +693,33 @@ document.addEventListener("mousemove",e=>{
   else { const dlt=diffDays(cur,barDrag.grab); if(dlt!==0)barDrag.moved=true; b.start=addDaysIso(barDrag.origStart,dlt); b.end=addDaysIso(barDrag.origEnd,dlt); }
   renderCalendar();
 });
-document.addEventListener("mouseup",()=>{
-  if(!barDrag)return;
-  document.body.classList.remove("dragging","bardragging");
-  const bd=barDrag;barDrag=null;
-  if(bd.moved){saveState();render();}
-  else{openEdit(bd.id);}   // 이동 없이 클릭만 → 수정창
+
+document.addEventListener("pointerup",e=>{
+  const cp=cellPress, bp=barPress;
+  clearCellPress(); clearBarPress();
+  if(barDrag){
+    const bd=endBarDrag();
+    if(bd.moved){saveState();render();}
+    else openEdit(bd.id,!canEdit);            // 움직임 없이 클릭/탭 → 수정창
+    return;
+  }
+  if(drag){
+    document.body.classList.remove("dragging");
+    const a=drag.a,b=drag.b;drag=null;clearSel();
+    openCreate(a<b?a:b, a<b?b:a);
+    return;
+  }
+  if(bp){ openEdit(bp.id,!canEdit); return; } // 막대 탭
+  if(cp&&canEdit) openCreate(cp.date,cp.date);// 날짜 탭 → 하루짜리 일정
 });
+
+document.addEventListener("pointercancel",()=>{
+  clearCellPress(); clearBarPress();
+  if(drag){drag=null;document.body.classList.remove("dragging");clearSel();}
+  if(barDrag){const bd=endBarDrag(); if(bd.moved){saveState();render();}}
+});
+/* 드래그 중에는 화면 스크롤 막기 (터치) */
+document.addEventListener("touchmove",e=>{ if(drag||barDrag)e.preventDefault(); },{passive:false});
 
 /* ---------- 모달 ---------- */
 let editingId=null;
