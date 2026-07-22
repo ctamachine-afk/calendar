@@ -115,6 +115,20 @@
   .qarow{display:flex;align-items:center;gap:8px;margin-top:8px}
   .qarow .btn{flex:0 0 auto}
   .qanote{font-size:11px;color:var(--muted);line-height:1.4}
+  /* 질문 기록 탭 */
+  .logsubj{margin-bottom:18px}
+  .logsubj:last-child{margin-bottom:0}
+  .logsubj .lh{display:flex;align-items:center;gap:7px;font-weight:700;font-size:13.5px;margin-bottom:8px}
+  .logsubj .lh i{width:11px;height:11px;border-radius:3px;display:inline-block;flex:0 0 auto}
+  .logsubj .lh .cnt{color:var(--muted);font-weight:400;font-size:12px}
+  .logrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;padding:8px 11px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:9px;margin-bottom:5px;font-size:13px}
+  .logrow .cno{color:var(--muted);font-size:11px;min-width:20px;text-align:right;flex:0 0 auto}
+  .logrow .cname{flex:1;min-width:120px}
+  .logrow .asg{display:flex;flex-wrap:wrap;gap:5px;margin-left:auto}
+  .asgtag{font-size:11.5px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap}
+  .asgtag .rd{color:var(--muted);margin-right:4px}
+  .asgtag b{color:var(--accent);font-weight:700;margin:0 3px}
   /* 스터디원 관리 */
   .memrows{display:flex;flex-direction:column;gap:6px;max-width:420px}
   .memrow{display:flex;align-items:center;gap:6px}
@@ -187,6 +201,7 @@
 
   <div class="tabs">
     <div class="tab active" data-tab="cal">📅 캘린더</div>
+    <div class="tab" data-tab="log">📋 질문 기록</div>
     <div class="tab adminOnly" data-tab="set">⚙️ 설정</div>
   </div>
 
@@ -204,6 +219,20 @@
       <div class="cah" id="cah"></div>
       <div id="cal"></div>
       <div class="callhint" id="calHint">💡 빈 날짜를 <b>드래그</b>하면 학습 기간이 만들어지고, 어떤 법·회독인지 고를 수 있어요. 만들어진 막대를 <b>클릭</b>하면 수정·완료체크·삭제할 수 있습니다.</div>
+    </div>
+  </div>
+
+  <!-- ============ 질문 기록 탭 ============ -->
+  <div class="page" id="page-log">
+    <div class="panel">
+      <div class="secttl">스터디원별 참여</div>
+      <div class="stats" id="logStats"></div>
+      <div id="logNoMem" class="muted" style="font-size:13px">아직 등록된 스터디원이 없어요.</div>
+    </div>
+    <div class="panel">
+      <div class="secttl">챕터별 질문 기록</div>
+      <div id="logBody"></div>
+      <div class="callhint">일정에서 <b>질문 순서 뽑기</b>를 한 챕터만 표시됩니다. <b>질문자 → 답변자</b> 순이에요.</div>
     </div>
   </div>
 
@@ -411,26 +440,40 @@ function qaHistory(subject,excludeId){
   return {ans,ask};
 }
 /* 스터디원 순서를 랜덤으로 섞어 1→2, 2→3, 3→1 순환 배정.
-   여러 순서 후보 중 '이전 답변자와 겹치지 않는' 것을 우선 선택한다. */
-function buildQA(from,to,subject,excludeId){
+   ① '이전 답변자와 겹치지 않는' 배정을 우선하고,
+   ② 그런 배정이 여러 개면 '지금 보이는 것과 다른' 걸 골라 매번 눈에 띄게 바뀌게 한다. */
+const qaSig=qa=>qa.map(x=>x.q+">"+x.a).join(",");
+function buildQA(from,to,subject,excludeId,currentQa){
   const ids=members().filter(m=>(m.name||"").trim()).map(m=>m.id);
   if(ids.length<2)return null;
   const n=ids.length;
   const h=qaHistory(subject,excludeId);
-  const cands = n<=6 ? permute(ids) : Array.from({length:400},()=>shuffled(ids));
-  let best=null,bestScore=Infinity,bestRep=0;
-  shuffled(cands).forEach(order=>{
-    let score=0,rep=0;
+  const cands = n<=6 ? permute(ids) : Array.from({length:600},()=>shuffled(ids));
+  let minScore=Infinity;
+  const scored=cands.map(order=>{
+    let score=0,rep=0; const qa=[];
     for(let ch=from,i=0; ch<=to; ch++,i++){
       const q=order[i%n], a=order[(i+1)%n];
       if(h.ans[ch]&&h.ans[ch].has(a)){score+=10;rep++;}  // 같은 챕터 답변자 반복 → 강한 감점
       if(h.ask[ch]&&h.ask[ch].has(q))score+=1;           // 질문자 반복 → 약한 감점
+      qa.push({ch,q,a});
     }
-    if(score<bestScore){bestScore=score;best=order;bestRep=rep;}
+    if(score<minScore)minScore=score;
+    return {qa,score,rep};
   });
-  const qa=[];
-  for(let ch=from,i=0; ch<=to; ch++,i++) qa.push({ch,q:best[i%n],a:best[(i+1)%n]});
-  return {qa,repeats:bestRep};
+  // 최소 점수 후보만, 중복 배정 제거
+  const bestMap=new Map();
+  scored.forEach(c=>{ if(c.score===minScore){const s=qaSig(c.qa); if(!bestMap.has(s))bestMap.set(s,c);} });
+  const options=bestMap.size;
+  let pool=[...bestMap.values()];
+  // 지금 화면의 배정은 후보에서 제외 (단, 그게 유일하면 그대로)
+  if(currentQa&&currentQa.length){
+    const cur=qaSig(currentQa);
+    const diff=pool.filter(c=>qaSig(c.qa)!==cur);
+    if(diff.length)pool=diff;
+  }
+  const pick=pool[Math.floor(Math.random()*pool.length)];
+  return {qa:pick.qa, repeats:pick.rep, options};
 }
 
 const CHAP_VER="core2026-v1"; // 기본 챕터 버전 (바뀌면 기본값 재적용)
@@ -444,6 +487,7 @@ function saveState(){saveLocal();pushRemote();}
 const firebaseEnabled = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.projectId);
 let db=null, auth=null, pushT=null, applyingRemote=false;
 let lastRemote=null;              // 서버에서 마지막으로 받은 문서 (되돌리기 이력용)
+let pushPending=false;            // 아직 보내지 않은 로컬 변경이 있는지
 const HIST_MAX=10;                // 보관할 이전 버전 개수
 function docRef(){return db.collection("calendars").doc(ROOM);}
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -457,6 +501,7 @@ function buildHist(){
 }
 function pushRemote(){
   if(!db||!canEdit||applyingRemote)return;          // 관리자 편집일 때만, 원격 적용 중엔 재전송 안 함
+  pushPending=true;                                  // 보낼 게 밀려 있음 → 그 사이 원격 수신은 무시
   // ⚠️ 예약 '시점'의 데이터를 즉시 복사해 둔다.
   //    (타이머가 깨어날 때 state를 다시 읽으면, 그 사이 바뀐 값이 서버를 덮어쓸 수 있음)
   const payload={
@@ -465,12 +510,14 @@ function pushRemote(){
   };
   clearTimeout(pushT);
   pushT=setTimeout(()=>{
+    pushPending=false;
     payload._updated=Date.now();
     payload._hist=buildHist();
     docRef().set(payload).catch(e=>console.warn("동기화 저장 실패:",e));
   },350);                                            // 드래그·타이핑 중 과도한 쓰기 방지
 }
 function applyRemote(d){
+  if(pushPending)return;          // 내가 방금 고친 게 아직 안 나갔으면 로컬이 더 최신 → 덮어쓰지 않음
   applyingRemote=true;
   lastRemote=d;
   state.blocks=Array.isArray(d.blocks)?d.blocks:[];
@@ -546,7 +593,27 @@ function roundProgress(r){let t=0,d=0;state.blocks.forEach(b=>{if(b.round===r){c
 function overallProgress(){let t=0,d=0;state.blocks.forEach(b=>{const c=dayCount(b);t+=c;if(b.done)d+=c;});return t?d/t:0;}
 
 /* ---------- 렌더 ---------- */
-function render(){renderStats();renderRounds();renderBlist();renderMembers();renderHistory();renderChapterAdmin();renderCalendar();}
+/* 다시 그릴 때 입력 중이던 칸의 포커스·커서 위치를 유지한다.
+   (동기화 응답이 오면 render()가 입력칸 DOM을 새로 만들기 때문) */
+function keepFocus(fn){
+  const a=document.activeElement;
+  const snap=(a&&a.matches&&a.matches(".meminput,.chinput"))
+    ? {cls:a.classList.contains("meminput")?"meminput":"chinput",
+       subj:a.dataset.subj??null, i:a.dataset.i,
+       s:a.selectionStart, e:a.selectionEnd}
+    : null;
+  fn();
+  if(!snap)return;
+  const q=snap.subj!==null
+    ? `.${snap.cls}[data-subj="${CSS.escape(snap.subj)}"][data-i="${snap.i}"]`
+    : `.${snap.cls}[data-i="${snap.i}"]`;
+  const el=document.querySelector(q);
+  if(el&&el!==document.activeElement){
+    el.focus();
+    try{el.setSelectionRange(snap.s,snap.e);}catch(_){}
+  }
+}
+function render(){keepFocus(()=>{renderStats();renderRounds();renderBlist();renderMembers();renderLog();renderHistory();renderChapterAdmin();renderCalendar();});}
 
 function renderMembers(){
   const el=document.getElementById("memRows");
@@ -566,6 +633,52 @@ function renderMembers(){
     ms.splice(+b.dataset.i,1); saveState(); renderMembers();
   });
 }
+/* ---------- 질문 기록 ---------- */
+function renderLog(){
+  // 과목 → 챕터번호 → [{round,q,a,start}]
+  const bySubj={};
+  state.blocks.forEach(b=>{
+    (b.qa||[]).forEach(x=>{
+      const s=bySubj[b.subject]||(bySubj[b.subject]={});
+      (s[x.ch]||(s[x.ch]=[])).push({round:b.round,q:x.q,a:x.a,start:b.start});
+    });
+  });
+
+  // 스터디원별 질문/답변 횟수
+  const ms=members().filter(m=>(m.name||"").trim());
+  const cnt={};
+  Object.values(bySubj).forEach(chs=>Object.values(chs).forEach(list=>list.forEach(e=>{
+    (cnt[e.q]||(cnt[e.q]={q:0,a:0})).q++;
+    (cnt[e.a]||(cnt[e.a]={q:0,a:0})).a++;
+  })));
+  document.getElementById("logNoMem").style.display=ms.length?"none":"block";
+  document.getElementById("logStats").innerHTML=ms.map(m=>{
+    const c=cnt[m.id]||{q:0,a:0};
+    return `<div class="stat"><div class="k">${esc(m.name)}</div>
+      <div class="v">질문 ${c.q} · 답변 ${c.a}</div></div>`;
+  }).join("");
+
+  // 과목별 챕터 기록
+  const order=CURRICULUM.map(c=>c.subject).filter(s=>bySubj[s]);
+  document.getElementById("logBody").innerHTML = order.length
+    ? order.map(subj=>{
+        const chs=effChapters(subj), map=bySubj[subj];
+        const nums=Object.keys(map).map(Number).sort((a,b)=>a-b);
+        const rows=nums.map(ch=>{
+          const name=chs[ch-1]||`챕터 ${ch}`;
+          const tags=map[ch].sort((a,b)=>a.round-b.round||(a.start<b.start?-1:1))
+            .map(e=>`<span class="asgtag"><span class="rd">${e.round}회독</span>${esc(memberName(e.q))}<b>→</b>${esc(memberName(e.a))}</span>`).join("");
+          return `<div class="logrow"><span class="cno">${ch}</span>
+            <span class="cname">${esc(name)}</span>
+            <span class="asg">${tags}</span></div>`;
+        }).join("");
+        return `<div class="logsubj">
+          <div class="lh"><i style="background:${colorOf(subj)}"></i>${esc(subj)}
+            <span class="cnt">${nums.length}개 챕터</span></div>${rows}</div>`;
+      }).join("")
+    : `<div class="muted" style="font-size:13px">아직 질문 순서를 뽑은 일정이 없어요. 캘린더에서 일정을 열고 <b>🎲 질문 순서 뽑기</b>를 눌러보세요.</div>`;
+}
+
 /* ---------- 백업 / 복원 ---------- */
 function exportBackup(){
   const data={_type:"sebup-calendar-backup",_ver:1,_at:new Date().toISOString(),
@@ -902,6 +1015,7 @@ let chapSel={from:1,to:1}; // 모달에서 현재 선택된 파트 챕터 범위
 let modalRO=false;         // 모달 보기 전용 여부
 let modalQA=null;          // 모달에서 편집 중인 질문 배정 [{ch,q,a}]
 let lastRepeats=0;         // 직전 뽑기에서 이전 답변자와 겹친 챕터 수
+let lastOptions=0;         // 직전 뽑기에서 조건을 만족하는 서로 다른 조합 수
 function setModalReadonly(ro){
   modalRO=ro;
   ["mSubject","mRound","mParts","mPart","mStart","mEnd","mDone","mChapFrom","mChapTo"]
@@ -967,7 +1081,9 @@ function renderQANote(){
           + (lastRepeats<0 ? ``
              : lastRepeats>0
               ? ` <span style="color:var(--s3)">스터디원이 적어 ${lastRepeats}개 챕터는 이전 답변자와 겹칩니다.</span>`
-              : ` 같은 챕터의 <b>이전 답변자</b>는 피해서 배정했어요.`)
+              : lastOptions<=1
+              ? ` <span style="color:var(--s3)">조건을 만족하는 조합이 이것뿐이라 다시 눌러도 그대로예요.</span>`
+              : ` 같은 챕터의 <b>이전 답변자</b>는 피해서 배정했어요. 다시 누르면 다른 조합이 나와요.`)
         : `누르면 스터디원 순서를 랜덤으로 섞어 배정해요. 같은 챕터를 전에 답변한 사람은 피합니다.`);
 }
 /* 현재 모달의 챕터 범위에 질문 배정 생성 → 즉시 저장 */
@@ -977,9 +1093,9 @@ function rollQA(){
   const total=effChapters(subj).length;
   if(!total){ alert("이 과목에 등록된 챕터가 없어요."); return; }
   const from=(parts>1)?chapSel.from:1, to=(parts>1)?chapSel.to:total;
-  const r=buildQA(from,to,subj,editingId);
+  const r=buildQA(from,to,subj,editingId,modalQA);
   if(!r){ alert("스터디원을 2명 이상 등록해 주세요. (설정 탭 → 스터디원 관리)"); return; }
-  modalQA=r.qa; lastRepeats=r.repeats;
+  modalQA=r.qa; lastRepeats=r.repeats; lastOptions=r.options;
   // 이미 등록된 일정이면 뽑는 즉시 저장 (취소해도 유지)
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
