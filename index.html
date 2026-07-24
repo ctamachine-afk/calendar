@@ -315,6 +315,7 @@
       <div class="chaplist" id="mChapters"></div>
       <div class="qarow">
         <button class="btn ghost sm adminOnly" id="mRollQA" type="button">🎲 질문 순서 뽑기</button>
+        <button class="btn ghost sm adminOnly" id="mClearQA" type="button" style="display:none">🧹 지우기</button>
         <span class="qanote" id="mQANote"></span>
       </div>
     </div>
@@ -420,6 +421,8 @@ function chapNames(b){
 /* ---------- 스터디원 / 질문 배정 ---------- */
 const members=()=>state.members||(state.members=[]);
 const memberName=id=>{const m=members().find(x=>x.id===id);return m?(m.name||"(이름없음)"):"(삭제됨)";};
+const memberGone=id=>!members().some(m=>m.id===id);        // 삭제된 스터디원인지
+const qaOrphan=x=>memberGone(x.q)&&memberGone(x.a);        // 질문자·답변자 둘 다 삭제됨 → 표시 불필요
 function shuffled(a){const r=a.slice();for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
 function permute(arr){
   if(arr.length<=1)return [arr.slice()];
@@ -639,6 +642,7 @@ function renderLog(){
   const bySubj={};
   state.blocks.forEach(b=>{
     (b.qa||[]).forEach(x=>{
+      if(qaOrphan(x))return;   // 질문자·답변자 둘 다 삭제된 배정은 표시하지 않음
       const s=bySubj[b.subject]||(bySubj[b.subject]={});
       (s[x.ch]||(s[x.ch]=[])).push({round:b.round,q:x.q,a:x.a,start:b.start});
     });
@@ -1063,7 +1067,7 @@ function renderChapSection(){
         ? `<ol start="${offset+1}">${list.map((c,i)=>{
             const chNo=offset+i+1;
             const x=modalQA&&modalQA.find(v=>v.ch===chNo);
-            const tag=x?`<span class="qa"><span class="who">${esc(memberName(x.q))}</span><b>→</b><span class="who">${esc(memberName(x.a))}</span></span>`:"";
+            const tag=(x&&!qaOrphan(x))?`<span class="qa"><span class="who">${esc(memberName(x.q))}</span><b>→</b><span class="who">${esc(memberName(x.a))}</span></span>`:"";
             return `<li>${tag}${esc(c)}</li>`;
           }).join("")}</ol>`
         : `<div class="none">선택된 챕터가 없어요.</div>`);
@@ -1074,6 +1078,9 @@ function renderQANote(){
   const n=members().filter(m=>(m.name||"").trim()).length;
   const note=document.getElementById("mQANote");
   if(!note)return;
+  const has=!!(modalQA&&modalQA.length);
+  const clr=document.getElementById("mClearQA");
+  if(clr) clr.style.display = has ? "inline-block" : "none";
   note.innerHTML = n<2
     ? `설정 탭에서 <b>스터디원을 2명 이상</b> 등록하면 질문 순서를 뽑을 수 있어요.`
     : (modalQA&&modalQA.length
@@ -1100,6 +1107,17 @@ function rollQA(){
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
     if(b){ b.qa=modalQA.map(x=>({...x})); saveState(); }
+  }
+  renderChapSection();
+}
+/* 질문 배정 지우기 → 즉시 저장 */
+function clearQA(){
+  if(!modalQA||!modalQA.length)return;
+  if(!confirm("이 일정의 질문 순서를 지울까요?"))return;
+  modalQA=null; lastRepeats=-1; lastOptions=0;
+  if(editingId){
+    const b=state.blocks.find(x=>x.id==editingId);
+    if(b){ b.qa=null; saveState(); }
   }
   renderChapSection();
 }
@@ -1170,6 +1188,7 @@ document.getElementById("mRound").oninput=()=>{refreshChap();updatePartHint();};
 document.getElementById("mChapFrom").onchange=()=>onChapSelChange("from");
 document.getElementById("mChapTo").onchange=()=>onChapSelChange("to");
 document.getElementById("mRollQA").onclick=rollQA;
+document.getElementById("mClearQA").onclick=clearQA;
 document.getElementById("memAdd").onclick=addMember;
 document.getElementById("bkDl").onclick=exportBackup;
 document.getElementById("bkUp").onchange=e=>{const f=e.target.files[0]; if(f)importBackup(f); e.target.value="";};
