@@ -110,6 +110,13 @@
   .chaprange select{flex:1;min-width:0;font-size:12.5px;padding:6px 8px}
   /* 질문 배정 */
   .chaplist li .qa{float:right;font-size:11.5px;color:var(--muted);margin-left:8px;white-space:nowrap}
+  .chaptree{list-style:none;margin:0;padding:0}
+  .chaptree>li{font-size:13px;margin:3px 0}
+  .chaptree .cnum{color:var(--muted);font-size:11px;margin-right:6px}
+  .chaptree li.chhead{font-weight:600;margin-top:7px}
+  .seclist{list-style:none;margin:4px 0 2px;padding-left:20px}
+  .seclist li{font-weight:400;margin:2px 0;position:relative}
+  .seclist li:before{content:"└";color:var(--muted);position:absolute;left:-13px}
   .chaplist li .qa b{color:var(--accent);font-weight:700;margin:0 2px}
   .chaplist li .qa .who{color:var(--txt);font-weight:600}
   .qarow{display:flex;align-items:center;gap:8px;margin-top:8px}
@@ -124,6 +131,9 @@
   .logrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;padding:8px 11px;
     background:var(--panel2);border:1px solid var(--line);border-radius:9px;margin-bottom:5px;font-size:13px}
   .logrow .cno{color:var(--muted);font-size:11px;min-width:20px;text-align:right;flex:0 0 auto}
+  .logrow.chrowhead{background:transparent;border:none;padding:6px 4px 2px;margin-bottom:0;font-weight:700}
+  .logrow.secrow{margin-left:20px}
+  .logrow.secrow .cname{color:var(--muted)}
   .logrow .cname{flex:1;min-width:120px}
   .logrow .asg{display:flex;flex-wrap:wrap;gap:5px;margin-left:auto}
   .asgtag{font-size:11.5px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap}
@@ -147,6 +157,13 @@
   .chbtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:6px;width:24px;height:27px;font-size:12px;flex:0 0 auto;padding:0}
   .chbtn:hover{color:var(--txt);border-color:var(--muted)}
   .chbtn.del:hover{color:#f2513c;border-color:#f2513c}
+  .chbtn.secbtn{width:auto;padding:0 7px;color:var(--accent)}
+  .chbtn.secbtn.on{background:color-mix(in srgb,var(--accent) 20%,transparent)}
+  .secedit{padding:5px 0 8px 26px}
+  .secrow{display:flex;align-items:center;gap:5px;margin:3px 0}
+  .secrow .sdot{color:var(--muted);font-size:11px;flex:0 0 auto}
+  .secinput{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:4px 7px;font-size:12px}
+  .secinput:focus{border-color:var(--accent);outline:none}
   /* 공유 / 관리자 잠금 */
   .adminbar{display:flex;align-items:center;gap:8px;margin:-6px 0 16px;flex-wrap:wrap}
   .lockpill{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 13px}
@@ -282,7 +299,7 @@
         <label class="btn ghost sm" style="margin:0"><input type="file" id="chUp" accept=".xlsx,.xls" style="display:none">⬆ 엑셀 업로드</label>
         <a class="mini" id="chReset">기본 챕터로 되돌리기</a>
       </div>
-      <div class="callhint">「<b>과목</b> / <b>챕터명</b>」 2개 열로 편집하세요. 과목명은 그대로 두고(예: 국세기본법) 챕터명만 추가·수정·삭제하면 됩니다. 업로드하면 전체 챕터가 파일 내용으로 교체돼요.</div>
+      <div class="callhint">엑셀은 「<b>과목</b> / <b>챕터명</b>」 2개 열이에요. 업로드하면 챕터가 파일 내용으로 교체돼요(같은 이름 챕터의 섹션은 유지). 큰 챕터는 아래 목록에서 <b>▤ 버튼</b>으로 <b>섹션</b>을 나눌 수 있고, 질문 배정은 섹션 단위로 이뤄집니다.</div>
       <div id="chAdmin" style="margin-top:14px"></div>
     </div>
 
@@ -305,7 +322,7 @@
       <div class="mhint" id="mHint"></div>
     </div>
     <div class="mfld">
-      <label>주요 챕터 <span class="muted" style="font-weight:400">· 설정 탭에서 엑셀로 편집</span></label>
+      <label>주요 챕터 <span class="muted" style="font-weight:400">· 설정 탭에서 챕터·섹션 편집</span></label>
       <div class="chaprange" id="mChapRange" style="display:none">
         <span class="rlbl">이 파트 범위</span>
         <select id="mChapFrom"></select>
@@ -390,6 +407,30 @@ const DEFAULT_CHAPTERS={
 };
 const chaptersOf=s=>(state.chapters&&state.chapters[s])||[];
 const effChapters=s=>chaptersOf(s).filter(c=>c.trim());
+/* ----- 섹션 (챕터 밑 소분류) -----
+   state.sections[subject] = chaptersOf(subject)와 같은 순서의 배열.
+   각 원소는 그 챕터의 섹션명 배열(없으면 빈 배열). */
+const sectionsArr=s=>((state.sections||(state.sections={}))[s]||(state.sections[s]=[]));
+const sectionsAt=(s,rawIdx)=>((sectionsArr(s)[rawIdx]||[]).filter(x=>(x||"").trim()));
+/* 비어있지 않은 챕터를 순서대로: {ch(1-based eff), ri(raw index), name} */
+function effRawPairs(subject){
+  const raw=chaptersOf(subject), out=[]; let ch=0;
+  raw.forEach((name,ri)=>{ if((name||"").trim()){ ch++; out.push({ch,ri,name:name.trim()}); } });
+  return out;
+}
+/* 질문 배정 단위 목록: 섹션이 있으면 섹션마다, 없으면 챕터 자체가 한 단위.
+   반환 {ch, sec, chName, secName}  (sec 0 = 챕터 전체) */
+function chapUnits(subject,from,to){
+  const units=[];
+  effRawPairs(subject).forEach(p=>{
+    if(p.ch<from||p.ch>to)return;
+    const secs=sectionsAt(subject,p.ri);
+    if(secs.length) secs.forEach((sn,i)=>units.push({ch:p.ch,sec:i+1,chName:p.name,secName:sn}));
+    else units.push({ch:p.ch,sec:0,chName:p.name,secName:null});
+  });
+  return units;
+}
+const unitKey=x=>x.ch+"."+(x.sec||0);
 const partTxt=b=>(b.parts&&b.parts>1)?` (${b.part||1}/${b.parts})`:"";
 /* total개 챕터를 parts개로 균등 분배 → 각 파트의 [시작,끝] (1-index, 포함) 배열 */
 function autoSplit(total,parts){
@@ -430,37 +471,41 @@ function permute(arr){
   arr.forEach((v,i)=>permute(arr.slice(0,i).concat(arr.slice(i+1))).forEach(p=>out.push([v].concat(p))));
   return out;
 }
-/* 같은 과목·같은 챕터에서 예전에 답변/질문한 사람 기억 (지금 뽑는 일정은 제외) */
+/* 같은 과목·같은 단위(챕터 또는 섹션)에서 예전에 답변/질문한 사람 기억 (지금 뽑는 일정은 제외) */
 function qaHistory(subject,excludeId){
   const ans={},ask={};
   state.blocks.forEach(b=>{
     if(b.id==excludeId||b.subject!==subject)return;
     (b.qa||[]).forEach(x=>{
-      (ans[x.ch]=ans[x.ch]||new Set()).add(x.a);
-      (ask[x.ch]=ask[x.ch]||new Set()).add(x.q);
+      const k=unitKey(x);
+      (ans[k]=ans[k]||new Set()).add(x.a);
+      (ask[k]=ask[k]||new Set()).add(x.q);
     });
   });
   return {ans,ask};
 }
 /* 스터디원 순서를 랜덤으로 섞어 1→2, 2→3, 3→1 순환 배정.
    ① '이전 답변자와 겹치지 않는' 배정을 우선하고,
-   ② 그런 배정이 여러 개면 '지금 보이는 것과 다른' 걸 골라 매번 눈에 띄게 바뀌게 한다. */
-const qaSig=qa=>qa.map(x=>x.q+">"+x.a).join(",");
+   ② 그런 배정이 여러 개면 '지금 보이는 것과 다른' 걸 골라 매번 눈에 띄게 바뀌게 한다.
+   배정 단위 = chapUnits (섹션이 있으면 섹션마다, 없으면 챕터). */
+const qaSig=qa=>qa.map(x=>unitKey(x)+":"+x.q+">"+x.a).join(",");
 function buildQA(from,to,subject,excludeId,currentQa){
   const ids=members().filter(m=>(m.name||"").trim()).map(m=>m.id);
   if(ids.length<2)return null;
+  const units=chapUnits(subject,from,to);
+  if(!units.length)return null;
   const n=ids.length;
   const h=qaHistory(subject,excludeId);
   const cands = n<=6 ? permute(ids) : Array.from({length:600},()=>shuffled(ids));
   let minScore=Infinity;
   const scored=cands.map(order=>{
     let score=0,rep=0; const qa=[];
-    for(let ch=from,i=0; ch<=to; ch++,i++){
-      const q=order[i%n], a=order[(i+1)%n];
-      if(h.ans[ch]&&h.ans[ch].has(a)){score+=10;rep++;}  // 같은 챕터 답변자 반복 → 강한 감점
-      if(h.ask[ch]&&h.ask[ch].has(q))score+=1;           // 질문자 반복 → 약한 감점
-      qa.push({ch,q,a});
-    }
+    units.forEach((u,i)=>{
+      const q=order[i%n], a=order[(i+1)%n], k=unitKey(u);
+      if(h.ans[k]&&h.ans[k].has(a)){score+=10;rep++;}  // 같은 단위 답변자 반복 → 강한 감점
+      if(h.ask[k]&&h.ask[k].has(q))score+=1;           // 질문자 반복 → 약한 감점
+      qa.push({ch:u.ch,sec:u.sec,q,a});
+    });
     if(score<minScore)minScore=score;
     return {qa,score,rep};
   });
@@ -481,7 +526,7 @@ function buildQA(from,to,subject,excludeId,currentQa){
 
 const CHAP_VER="core2026-v1"; // 기본 챕터 버전 (바뀌면 기본값 재적용)
 let state=loadState()||defaultState();
-function defaultState(){return {exam:"",defRound:1,viewYM:null,blocks:[],members:[],chapters:JSON.parse(JSON.stringify(DEFAULT_CHAPTERS)),chaptersVer:CHAP_VER};}
+function defaultState(){return {exam:"",defRound:1,viewYM:null,blocks:[],members:[],chapters:JSON.parse(JSON.stringify(DEFAULT_CHAPTERS)),sections:{},chaptersVer:CHAP_VER};}
 function loadState(){try{const s=JSON.parse(localStorage.getItem(STORE_KEY));if(s){if(!s.blocks)s.blocks=[];if(!s.chapters||s.chaptersVer!==CHAP_VER){s.chapters=JSON.parse(JSON.stringify(DEFAULT_CHAPTERS));s.chaptersVer=CHAP_VER;localStorage.setItem(STORE_KEY,JSON.stringify(s));}}return s;}catch(e){return null;}}
 function saveLocal(){localStorage.setItem(STORE_KEY,JSON.stringify(state));}
 function saveState(){saveLocal();pushRemote();}
@@ -494,6 +539,30 @@ let pushPending=false;            // 아직 보내지 않은 로컬 변경이 �
 const HIST_MAX=10;                // 보관할 이전 버전 개수
 function docRef(){return db.collection("calendars").doc(ROOM);}
 const clone=o=>JSON.parse(JSON.stringify(o));
+/* Firestore는 '배열 안의 배열'(중첩 배열)을 저장 못 하므로,
+   섹션( {과목:[[..],[..]]} )을 보낼 땐 인덱스 맵( {과목:{"0":[..],"1":[..]}} )으로 인코딩한다. */
+function encodeSections(secs){
+  const out={};
+  Object.keys(secs||{}).forEach(subj=>{
+    const arr=secs[subj]||[], m={};
+    arr.forEach((list,i)=>{ if(Array.isArray(list)&&list.length) m[i]=list; });
+    if(Object.keys(m).length) out[subj]=m;
+  });
+  return out;
+}
+function decodeSections(enc){
+  const out={};
+  Object.keys(enc||{}).forEach(subj=>{
+    const v=enc[subj];
+    if(Array.isArray(v)){ out[subj]=v; return; }        // 구버전(배열) 호환
+    const keys=Object.keys(v||{}).map(Number);
+    const max=keys.length?Math.max(...keys):-1;
+    const arr=Array.from({length:max+1},()=>[]);        // 빈 챕터는 [] 로 채움
+    keys.forEach(k=>{ arr[k]=v[k]; });
+    out[subj]=arr;
+  });
+  return out;
+}
 /* 서버에 있던 직전 상태를 이력으로 쌓는다 (덮어쓰기 사고 대비) */
 function buildHist(){
   if(!lastRemote)return [];
@@ -509,6 +578,7 @@ function pushRemote(){
   //    (타이머가 깨어날 때 state를 다시 읽으면, 그 사이 바뀐 값이 서버를 덮어쓸 수 있음)
   const payload={
     blocks:clone(state.blocks||[]), chapters:clone(state.chapters||{}), chaptersVer:state.chaptersVer,
+    sections:encodeSections(state.sections),          // 중첩 배열 → 맵으로 인코딩
     members:clone(state.members||[]), exam:state.exam||"", defRound:state.defRound||1
   };
   clearTimeout(pushT);
@@ -526,6 +596,7 @@ function applyRemote(d){
   state.blocks=Array.isArray(d.blocks)?d.blocks:[];
   state.chapters=(d.chapters&&Object.keys(d.chapters).length)?d.chapters:JSON.parse(JSON.stringify(DEFAULT_CHAPTERS));
   state.chaptersVer=d.chaptersVer||CHAP_VER;
+  state.sections=decodeSections(d.sections);          // 맵 → 중첩 배열로 디코딩
   state.members=Array.isArray(d.members)?d.members:[];
   state.exam=d.exam||"";
   if(typeof d.defRound==="number")state.defRound=d.defRound;
@@ -600,16 +671,17 @@ function overallProgress(){let t=0,d=0;state.blocks.forEach(b=>{const c=dayCount
    (동기화 응답이 오면 render()가 입력칸 DOM을 새로 만들기 때문) */
 function keepFocus(fn){
   const a=document.activeElement;
-  const snap=(a&&a.matches&&a.matches(".meminput,.chinput"))
-    ? {cls:a.classList.contains("meminput")?"meminput":"chinput",
-       subj:a.dataset.subj??null, i:a.dataset.i,
+  const snap=(a&&a.matches&&a.matches(".meminput,.chinput,.secinput"))
+    ? {cls:[...a.classList].find(c=>c.endsWith("input")),
+       subj:a.dataset.subj??null, i:a.dataset.i??null, sIdx:a.dataset.s??null,
        s:a.selectionStart, e:a.selectionEnd}
     : null;
   fn();
   if(!snap)return;
-  const q=snap.subj!==null
-    ? `.${snap.cls}[data-subj="${CSS.escape(snap.subj)}"][data-i="${snap.i}"]`
-    : `.${snap.cls}[data-i="${snap.i}"]`;
+  let q="."+snap.cls;
+  if(snap.subj!==null)q+=`[data-subj="${CSS.escape(snap.subj)}"]`;
+  if(snap.i!==null)q+=`[data-i="${snap.i}"]`;
+  if(snap.sIdx!==null)q+=`[data-s="${snap.sIdx}"]`;
   const el=document.querySelector(q);
   if(el&&el!==document.activeElement){
     el.focus();
@@ -638,20 +710,20 @@ function renderMembers(){
 }
 /* ---------- 질문 기록 ---------- */
 function renderLog(){
-  // 과목 → 챕터번호 → [{round,q,a,start}]
+  // 과목 → "ch.sec" → [{round,q,a,start}]
   const bySubj={};
   state.blocks.forEach(b=>{
     (b.qa||[]).forEach(x=>{
       if(qaOrphan(x))return;   // 질문자·답변자 둘 다 삭제된 배정은 표시하지 않음
       const s=bySubj[b.subject]||(bySubj[b.subject]={});
-      (s[x.ch]||(s[x.ch]=[])).push({round:b.round,q:x.q,a:x.a,start:b.start});
+      (s[unitKey(x)]||(s[unitKey(x)]=[])).push({round:b.round,q:x.q,a:x.a,start:b.start});
     });
   });
 
   // 스터디원별 질문/답변 횟수
   const ms=members().filter(m=>(m.name||"").trim());
   const cnt={};
-  Object.values(bySubj).forEach(chs=>Object.values(chs).forEach(list=>list.forEach(e=>{
+  Object.values(bySubj).forEach(units=>Object.values(units).forEach(list=>list.forEach(e=>{
     (cnt[e.q]||(cnt[e.q]={q:0,a:0})).q++;
     (cnt[e.a]||(cnt[e.a]={q:0,a:0})).a++;
   })));
@@ -662,23 +734,34 @@ function renderLog(){
       <div class="v">질문 ${c.q} · 답변 ${c.a}</div></div>`;
   }).join("");
 
-  // 과목별 챕터 기록
+  const tags=list=>list.sort((a,b)=>a.round-b.round||(a.start<b.start?-1:1))
+    .map(e=>`<span class="asgtag"><span class="rd">${e.round}회독</span>${esc(memberName(e.q))}<b>→</b>${esc(memberName(e.a))}</span>`).join("");
+
+  // 과목별 챕터/섹션 기록
   const order=CURRICULUM.map(c=>c.subject).filter(s=>bySubj[s]);
   document.getElementById("logBody").innerHTML = order.length
     ? order.map(subj=>{
-        const chs=effChapters(subj), map=bySubj[subj];
-        const nums=Object.keys(map).map(Number).sort((a,b)=>a-b);
-        const rows=nums.map(ch=>{
-          const name=chs[ch-1]||`챕터 ${ch}`;
-          const tags=map[ch].sort((a,b)=>a.round-b.round||(a.start<b.start?-1:1))
-            .map(e=>`<span class="asgtag"><span class="rd">${e.round}회독</span>${esc(memberName(e.q))}<b>→</b>${esc(memberName(e.a))}</span>`).join("");
-          return `<div class="logrow"><span class="cno">${ch}</span>
-            <span class="cname">${esc(name)}</span>
-            <span class="asg">${tags}</span></div>`;
-        }).join("");
+        const map=bySubj[subj];
+        const pairs=effRawPairs(subj);
+        let rows="", nCh=0;
+        pairs.forEach(p=>{
+          const secs=sectionsAt(subj,p.ri);
+          const whole=map[p.ch+".0"];
+          const hasSec=secs.some((sn,i)=>map[p.ch+"."+(i+1)]);
+          if(!whole&&!hasSec)return;   // 이 챕터에 기록 없음
+          nCh++;
+          if(secs.length&&hasSec){
+            rows+=`<div class="logrow chrowhead"><span class="cno">${p.ch}</span><span class="cname">${esc(p.name)}</span></div>`;
+            secs.forEach((sn,i)=>{ const l=map[p.ch+"."+(i+1)]; if(!l)return;
+              rows+=`<div class="logrow secrow"><span class="cno"></span><span class="cname">${esc(sn)}</span><span class="asg">${tags(l)}</span></div>`;
+            });
+          }else if(whole){
+            rows+=`<div class="logrow"><span class="cno">${p.ch}</span><span class="cname">${esc(p.name)}</span><span class="asg">${tags(whole)}</span></div>`;
+          }
+        });
         return `<div class="logsubj">
           <div class="lh"><i style="background:${colorOf(subj)}"></i>${esc(subj)}
-            <span class="cnt">${nums.length}개 챕터</span></div>${rows}</div>`;
+            <span class="cnt">${nCh}개 챕터</span></div>${rows}</div>`;
       }).join("")
     : `<div class="muted" style="font-size:13px">아직 질문 순서를 뽑은 일정이 없어요. 캘린더에서 일정을 열고 <b>🎲 질문 순서 뽑기</b>를 눌러보세요.</div>`;
 }
@@ -687,7 +770,7 @@ function renderLog(){
 function exportBackup(){
   const data={_type:"sebup-calendar-backup",_ver:1,_at:new Date().toISOString(),
     blocks:state.blocks||[],members:state.members||[],
-    chapters:state.chapters||{},chaptersVer:state.chaptersVer,
+    chapters:state.chapters||{},sections:state.sections||{},chaptersVer:state.chaptersVer,
     exam:state.exam||"",defRound:state.defRound||1};
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));
@@ -704,6 +787,7 @@ function importBackup(file){
       state.blocks=d.blocks;
       state.members=Array.isArray(d.members)?d.members:[];
       if(d.chapters&&Object.keys(d.chapters).length){state.chapters=d.chapters;state.chaptersVer=d.chaptersVer||CHAP_VER;}
+      state.sections=(d.sections&&typeof d.sections==="object")?d.sections:{};
       state.exam=d.exam||"";
       if(typeof d.defRound==="number")state.defRound=d.defRound;
       saveState(); syncInputs(); render();
@@ -742,20 +826,33 @@ function addMember(){
 }
 
 function escAttr(s){return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
+const chExpanded=new Set(); // 섹션 편집이 펼쳐진 챕터 (subj|rawIndex)
+function secList(subj,i){ const arr=sectionsArr(subj); if(!Array.isArray(arr[i]))arr[i]=[]; return arr[i]; }
 function renderChapterAdmin(){
   document.getElementById("chAdmin").innerHTML=`<div class="chadmin">`+CURRICULUM.map(c=>{
-    const chs=chaptersOf(c.subject);
-    const rows=chs.map((x,i)=>`<div class="chrow">
-        <span class="chnum">${i+1}</span>
-        <input class="chinput" value="${escAttr(x)}" data-subj="${escAttr(c.subject)}" data-i="${i}" placeholder="챕터명">
-        <button class="chbtn up" data-subj="${escAttr(c.subject)}" data-i="${i}" title="위로">↑</button>
-        <button class="chbtn down" data-subj="${escAttr(c.subject)}" data-i="${i}" title="아래로">↓</button>
-        <button class="chbtn del" data-subj="${escAttr(c.subject)}" data-i="${i}" title="삭제">✕</button>
-      </div>`).join("");
+    const subj=c.subject, chs=chaptersOf(subj);
+    const rows=chs.map((x,i)=>{
+      const secs=(sectionsArr(subj)[i]||[]);
+      const on=chExpanded.has(subj+"|"+i);
+      const secBody = on ? `<div class="secedit">`+
+          secs.map((sn,si)=>`<div class="secrow"><span class="sdot">└</span>
+            <input class="secinput" value="${escAttr(sn)}" data-subj="${escAttr(subj)}" data-i="${i}" data-s="${si}" placeholder="섹션명">
+            <button class="chbtn secdel" data-subj="${escAttr(subj)}" data-i="${i}" data-s="${si}" title="섹션 삭제">✕</button></div>`).join("")
+          +`<button class="btn ghost sm secadd" data-subj="${escAttr(subj)}" data-i="${i}" style="margin-top:4px">+ 섹션</button></div>` : "";
+      return `<div class="chitem">
+        <div class="chrow">
+          <span class="chnum">${i+1}</span>
+          <input class="chinput" value="${escAttr(x)}" data-subj="${escAttr(subj)}" data-i="${i}" placeholder="챕터명">
+          <button class="chbtn secbtn ${on?'on':''}" data-subj="${escAttr(subj)}" data-i="${i}" title="섹션 편집">▤${secs.length?" "+secs.length:""}</button>
+          <button class="chbtn up" data-subj="${escAttr(subj)}" data-i="${i}" title="위로">↑</button>
+          <button class="chbtn down" data-subj="${escAttr(subj)}" data-i="${i}" title="아래로">↓</button>
+          <button class="chbtn del" data-subj="${escAttr(subj)}" data-i="${i}" title="삭제">✕</button>
+        </div>${secBody}</div>`;
+    }).join("");
     return `<div class="chcard">
-      <div class="ch"><i style="background:${c.color}"></i>${c.subject} <span class="muted" style="font-weight:400">${chs.length}개</span></div>
+      <div class="ch"><i style="background:${c.color}"></i>${subj} <span class="muted" style="font-weight:400">${chs.length}개</span></div>
       <div class="chrows">${rows}</div>
-      <button class="btn ghost sm chadd" data-subj="${escAttr(c.subject)}" style="margin-top:8px">+ 챕터 추가</button>
+      <button class="btn ghost sm chadd" data-subj="${escAttr(subj)}" style="margin-top:8px">+ 챕터 추가</button>
     </div>`;
   }).join("")+`</div>`;
   bindChapterAdmin();
@@ -767,15 +864,41 @@ function bindChapterAdmin(){
     inp.onkeydown=e=>{ if(e.key==="Enter"){e.preventDefault(); addChapter(inp.dataset.subj);} };
   });
   root.querySelectorAll(".chbtn.del").forEach(b=>b.onclick=()=>{
-    const a=state.chapters[b.dataset.subj]; a.splice(+b.dataset.i,1); saveState(); renderChapterAdmin();
+    const subj=b.dataset.subj, i=+b.dataset.i;
+    if(!confirm("이 챕터를 삭제할까요? (하위 섹션도 함께 삭제됩니다)"))return;
+    state.chapters[subj].splice(i,1);
+    sectionsArr(subj).splice(i,1);       // 섹션 정렬 유지
+    saveState(); renderChapterAdmin();
   });
   root.querySelectorAll(".chbtn.up").forEach(b=>b.onclick=()=>moveChapter(b.dataset.subj,+b.dataset.i,-1));
   root.querySelectorAll(".chbtn.down").forEach(b=>b.onclick=()=>moveChapter(b.dataset.subj,+b.dataset.i,1));
   root.querySelectorAll(".chadd").forEach(b=>b.onclick=()=>addChapter(b.dataset.subj));
+  // 섹션 편집
+  root.querySelectorAll(".chbtn.secbtn").forEach(b=>b.onclick=()=>{
+    const k=b.dataset.subj+"|"+b.dataset.i;
+    chExpanded.has(k)?chExpanded.delete(k):chExpanded.add(k);
+    renderChapterAdmin();
+  });
+  root.querySelectorAll(".secinput").forEach(inp=>{
+    inp.oninput=()=>{ secList(inp.dataset.subj,+inp.dataset.i)[+inp.dataset.s]=inp.value; saveState(); };
+    inp.onkeydown=e=>{ if(e.key==="Enter"){e.preventDefault(); addSection(inp.dataset.subj,+inp.dataset.i);} };
+  });
+  root.querySelectorAll(".secdel").forEach(b=>b.onclick=()=>{
+    secList(b.dataset.subj,+b.dataset.i).splice(+b.dataset.s,1); saveState(); renderChapterAdmin();
+  });
+  root.querySelectorAll(".secadd").forEach(b=>b.onclick=()=>addSection(b.dataset.subj,+b.dataset.i));
+}
+function addSection(subj,i){
+  chExpanded.add(subj+"|"+i);
+  secList(subj,i).push(""); saveState(); renderChapterAdmin();
+  const inputs=document.querySelectorAll(`.secinput[data-subj="${CSS.escape(subj)}"][data-i="${i}"]`);
+  if(inputs.length) inputs[inputs.length-1].focus();
 }
 function moveChapter(subj,i,d){
   const a=state.chapters[subj]; const j=i+d; if(j<0||j>=a.length)return;
-  [a[i],a[j]]=[a[j],a[i]]; saveState(); renderChapterAdmin();
+  [a[i],a[j]]=[a[j],a[i]];
+  const s=sectionsArr(subj); const si=s[i], sj=s[j]; s[i]=sj; s[j]=si;   // 섹션도 함께 이동
+  saveState(); renderChapterAdmin();
 }
 function addChapter(subj){
   (state.chapters[subj]||(state.chapters[subj]=[])).push(""); saveState(); renderChapterAdmin();
@@ -1061,15 +1184,21 @@ function renderChapSection(){
     fromSel.value=chapSel.from; toSel.value=chapSel.to;
     offset=chapSel.from-1; list=chs.slice(chapSel.from-1,chapSel.to);
   }else rangeEl.style.display="none";
+  const from=(parts>1)?chapSel.from:1, to=(parts>1)?chapSel.to:total;
+  const findQA=(ch,sec)=>modalQA&&modalQA.find(v=>v.ch===ch&&(v.sec||0)===sec);
+  const qaTag=x=>(x&&!qaOrphan(x))?`<span class="qa"><span class="who">${esc(memberName(x.q))}</span><b>→</b><span class="who">${esc(memberName(x.a))}</span></span>`:"";
+  const pairs=effRawPairs(subj).filter(p=>p.ch>=from&&p.ch<=to);
   document.getElementById("mChapters").innerHTML= total===0
-    ? `<div class="none">등록된 챕터가 없어요. 설정 탭에서 엑셀로 추가하세요.</div>`
-    : (list.length
-        ? `<ol start="${offset+1}">${list.map((c,i)=>{
-            const chNo=offset+i+1;
-            const x=modalQA&&modalQA.find(v=>v.ch===chNo);
-            const tag=(x&&!qaOrphan(x))?`<span class="qa"><span class="who">${esc(memberName(x.q))}</span><b>→</b><span class="who">${esc(memberName(x.a))}</span></span>`:"";
-            return `<li>${tag}${esc(c)}</li>`;
-          }).join("")}</ol>`
+    ? `<div class="none">등록된 챕터가 없어요. 설정 탭에서 추가하세요.</div>`
+    : (pairs.length
+        ? `<ul class="chaptree">`+pairs.map(p=>{
+            const secs=sectionsAt(subj,p.ri);
+            if(secs.length){
+              const sub=secs.map((sn,i)=>`<li>${qaTag(findQA(p.ch,i+1))}${esc(sn)}</li>`).join("");
+              return `<li class="chhead"><span class="cnum">${p.ch}</span>${esc(p.name)} <span class="muted" style="font-weight:400">· ${secs.length}섹션</span><ul class="seclist">${sub}</ul></li>`;
+            }
+            return `<li><span class="cnum">${p.ch}</span>${qaTag(findQA(p.ch,0))}${esc(p.name)}</li>`;
+          }).join("")+`</ul>`
         : `<div class="none">선택된 챕터가 없어요.</div>`);
   renderQANote();
 }
@@ -1312,7 +1441,17 @@ document.getElementById("chUp").onchange=e=>{
         (map[a]=map[a]||[]).push(b);
       });
       if(!Object.keys(map).length){alert("읽을 수 있는 데이터가 없어요. 「과목 / 챕터명」 열을 확인하세요.");return;}
-      state.chapters=map; saveState(); renderChapterAdmin();
+      // 챕터 교체 전에 '과목·챕터명 → 섹션'을 기억했다가, 이름이 같은 챕터에 이어붙인다
+      const secByName={};
+      Object.keys(state.chapters||{}).forEach(subj=>{
+        chaptersOf(subj).forEach((nm,i)=>{ const s=sectionsArr(subj)[i];
+          if((nm||"").trim()&&Array.isArray(s)&&s.length) secByName[subj+" "+nm.trim()]=s; });
+      });
+      state.chapters=map;
+      const newSec={};
+      Object.keys(map).forEach(subj=>{ newSec[subj]=map[subj].map(nm=>secByName[subj+" "+String(nm).trim()]||[]); });
+      state.sections=newSec;
+      saveState(); renderChapterAdmin();
       const known=CURRICULUM.map(c=>c.subject);
       const unknown=Object.keys(map).filter(k=>!known.includes(k));
       alert("챕터를 업데이트했어요."+(unknown.length?`\n\n⚠️ 과목명이 일치하지 않는 항목: ${unknown.join(", ")}\n(이 과목들은 캘린더 챕터에 표시되지 않아요)`:""));
@@ -1322,8 +1461,8 @@ document.getElementById("chUp").onchange=e=>{
   rd.readAsArrayBuffer(f);
 };
 document.getElementById("chReset").onclick=()=>{
-  if(confirm("챕터를 기본값으로 되돌릴까요? (일정은 유지됩니다)")){
-    state.chapters=JSON.parse(JSON.stringify(DEFAULT_CHAPTERS)); saveState(); renderChapterAdmin();
+  if(confirm("챕터를 기본값으로 되돌릴까요? (섹션도 초기화되고, 일정은 유지됩니다)")){
+    state.chapters=JSON.parse(JSON.stringify(DEFAULT_CHAPTERS)); state.sections={}; saveState(); renderChapterAdmin();
   }
 };
 
