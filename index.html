@@ -484,7 +484,11 @@ function qaHistory(subject,excludeId){
   });
   return {ans,ask};
 }
-/* 스터디원 순서를 랜덤으로 섞어 1→2, 2→3, 3→1 순환 배정.
+/* 질문자→답변자 순환 배정.
+   '누가 누구에게 질문하나'(순환)와 '어느 단위를 누가 질문하나'(질문자 순서)를
+   각각 따로 섞는다. 이렇게 하면 '답변자가 곧 다음 단위의 질문자'라는 사슬 제약이 풀려
+   a→b, b→c, c→a 뿐 아니라 a→b, c→a, b→c 같은 배치도 나온다.
+   (여전히 모두가 정확히 한 번 질문하고 한 번 답변한다.)
    ① '이전 답변자와 겹치지 않는' 배정을 우선하고,
    ② 그런 배정이 여러 개면 '지금 보이는 것과 다른' 걸 골라 매번 눈에 띄게 바뀌게 한다.
    배정 단위 = chapUnits (섹션이 있으면 섹션마다, 없으면 챕터). */
@@ -496,12 +500,21 @@ function buildQA(from,to,subject,excludeId,currentQa){
   if(!units.length)return null;
   const n=ids.length;
   const h=qaHistory(subject,excludeId);
-  const cands = n<=6 ? permute(ids) : Array.from({length:600},()=>shuffled(ids));
+  // 후보 = { cyc: 순환(질문자 p는 순환 상 다음 사람에게 질문), qorder: 단위별 질문자 순서 }.
+  const target = n<=6 ? 720 : 800;
+  const cands=[]; const seen=new Set();
+  for(let t=0; t<4000 && cands.length<target; t++){
+    const cyc=shuffled(ids), qorder=shuffled(ids);
+    const sig=cyc.join(",")+"|"+qorder.join(",");
+    if(seen.has(sig))continue;
+    seen.add(sig); cands.push({cyc,qorder});
+  }
   let minScore=Infinity;
-  const scored=cands.map(order=>{
+  const scored=cands.map(({cyc,qorder})=>{
+    const next={}; cyc.forEach((id,k)=>{next[id]=cyc[(k+1)%n];}); // 순환상 답변자
     let score=0,rep=0; const qa=[];
     units.forEach((u,i)=>{
-      const q=order[i%n], a=order[(i+1)%n], k=unitKey(u);
+      const q=qorder[i%n], a=next[q], k=unitKey(u);
       if(h.ans[k]&&h.ans[k].has(a)){score+=10;rep++;}  // 같은 단위 답변자 반복 → 강한 감점
       if(h.ask[k]&&h.ask[k].has(q))score+=1;           // 질문자 반복 → 약한 감점
       qa.push({ch:u.ch,sec:u.sec,q,a});
