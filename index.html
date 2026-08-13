@@ -122,13 +122,10 @@
   .qarow{display:flex;align-items:center;gap:8px;margin-top:8px}
   .qarow .btn{flex:0 0 auto}
   .qanote{font-size:11px;color:var(--muted);line-height:1.4}
-  /* 불참 처리 */
-  .chaplist li .qa.off{color:var(--muted);text-decoration:line-through;opacity:.6}
-  .chaplist li .qa.off b,.chaplist li .qa.off .who{color:var(--muted)}
-  .qa .offlbl,.asgtag .offlbl{text-decoration:none;margin-left:5px;font-size:10px;color:var(--s4);
-    border:1px solid var(--s4);border-radius:6px;padding:0 4px;vertical-align:middle}
-  .asgtag.off{opacity:.55;text-decoration:line-through}
-  .asgtag.off b{color:var(--muted)}
+  /* 불참 처리: 불참자 이름만 취소선, 상대(참석자)는 그대로 */
+  .chaplist li .qa .who.off,.asgtag .who.off{color:var(--muted);text-decoration:line-through;opacity:.65;font-weight:400}
+  .qa .offlbl{text-decoration:none;margin-left:4px;font-size:9.5px;color:var(--s4);
+    border:1px solid var(--s4);border-radius:6px;padding:0 4px;vertical-align:middle;display:inline-block}
   .absrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:9px}
   .absrow .abslbl{font-size:11px;color:var(--muted);margin-right:2px}
   .abschip{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
@@ -478,9 +475,8 @@ const members=()=>state.members||(state.members=[]);
 const memberName=id=>{const m=members().find(x=>x.id===id);return m?(m.name||"(이름없음)"):"(삭제됨)";};
 const memberGone=id=>!members().some(m=>m.id===id);        // 삭제된 스터디원인지
 const qaOrphan=x=>memberGone(x.q)&&memberGone(x.a);        // 질문자·답변자 둘 다 삭제됨 → 표시 불필요
-/* 이 일정에서 불참자가 낀 배정인지 (block+배정단위, 또는 불참 id목록+배정단위) */
-const inAbs=(absent,x)=>Array.isArray(absent)&&(absent.includes(x.q)||absent.includes(x.a));
-const isAbsent=(b,x)=>inAbs(b&&b.absent,x);
+/* 이 사람이 이 일정에서 불참인가. 불참자는 자기 역할(질문자/답변자)만 비활성화되고 상대는 유지 */
+const absHas=(absent,id)=>Array.isArray(absent)&&absent.includes(id);
 function shuffled(a){const r=a.slice();for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
 function permute(arr){
   if(arr.length<=1)return [arr.slice()];
@@ -494,10 +490,9 @@ function qaHistory(subject,excludeId){
   state.blocks.forEach(b=>{
     if(b.id==excludeId||b.subject!==subject)return;
     (b.qa||[]).forEach(x=>{
-      if(isAbsent(b,x))return;   // 불참으로 비활성화된 배정은 이력에서 제외
       const k=unitKey(x);
-      (ans[k]=ans[k]||new Set()).add(x.a);
-      (ask[k]=ask[k]||new Set()).add(x.q);
+      if(!absHas(b.absent,x.a))(ans[k]=ans[k]||new Set()).add(x.a);  // 불참 답변자는 실제로 안 했으니 제외
+      if(!absHas(b.absent,x.q))(ask[k]=ask[k]||new Set()).add(x.q);  // 불참 질문자도 제외
     });
   });
   return {ans,ask};
@@ -747,7 +742,7 @@ function renderLog(){
     (b.qa||[]).forEach(x=>{
       if(qaOrphan(x))return;   // 질문자·답변자 둘 다 삭제된 배정은 표시하지 않음
       const s=bySubj[b.subject]||(bySubj[b.subject]={});
-      (s[unitKey(x)]||(s[unitKey(x)]=[])).push({round:b.round,q:x.q,a:x.a,start:b.start,off:isAbsent(b,x)});
+      (s[unitKey(x)]||(s[unitKey(x)]=[])).push({round:b.round,q:x.q,a:x.a,start:b.start,qoff:absHas(b.absent,x.q),aoff:absHas(b.absent,x.a)});
     });
   });
 
@@ -755,9 +750,8 @@ function renderLog(){
   const ms=members().filter(m=>(m.name||"").trim());
   const cnt={};
   Object.values(bySubj).forEach(units=>Object.values(units).forEach(list=>list.forEach(e=>{
-    if(e.off)return;   // 불참 배정은 질문/답변 횟수에 포함하지 않음
-    (cnt[e.q]||(cnt[e.q]={q:0,a:0})).q++;
-    (cnt[e.a]||(cnt[e.a]={q:0,a:0})).a++;
+    if(!e.qoff)(cnt[e.q]||(cnt[e.q]={q:0,a:0})).q++;   // 불참 질문자만 질문 횟수 제외
+    if(!e.aoff)(cnt[e.a]||(cnt[e.a]={q:0,a:0})).a++;   // 불참 답변자만 답변 횟수 제외
   })));
   document.getElementById("logNoMem").style.display=ms.length?"none":"block";
   document.getElementById("logStats").innerHTML=ms.map(m=>{
@@ -766,8 +760,9 @@ function renderLog(){
       <div class="v">질문 ${c.q} · 답변 ${c.a}</div></div>`;
   }).join("");
 
+  const who=(id,off)=>`<span class="who${off?' off':''}">${esc(memberName(id))}</span>`;
   const tags=list=>list.sort((a,b)=>a.round-b.round||(a.start<b.start?-1:1))
-    .map(e=>`<span class="asgtag${e.off?' off':''}"><span class="rd">${e.round}회독</span>${esc(memberName(e.q))}<b>→</b>${esc(memberName(e.a))}${e.off?'<span class="offlbl">불참</span>':''}</span>`).join("");
+    .map(e=>`<span class="asgtag"><span class="rd">${e.round}회독</span>${who(e.q,e.qoff)}<b>→</b>${who(e.a,e.aoff)}</span>`).join("");
 
   // 과목별 챕터/섹션 기록
   const order=CURRICULUM.map(c=>c.subject).filter(s=>bySubj[s]);
@@ -1219,7 +1214,8 @@ function renderChapSection(){
   }else rangeEl.style.display="none";
   const from=(parts>1)?chapSel.from:1, to=(parts>1)?chapSel.to:total;
   const findQA=(ch,sec)=>modalQA&&modalQA.find(v=>v.ch===ch&&(v.sec||0)===sec);
-  const qaTag=x=>(x&&!qaOrphan(x))?`<span class="qa${inAbs(modalAbsent,x)?' off':''}"><span class="who">${esc(memberName(x.q))}</span><b>→</b><span class="who">${esc(memberName(x.a))}</span>${inAbs(modalAbsent,x)?'<span class="offlbl">불참</span>':''}</span>`:"";
+  const who=id=>`<span class="who${absHas(modalAbsent,id)?' off':''}">${esc(memberName(id))}${absHas(modalAbsent,id)?'<span class="offlbl">불참</span>':''}</span>`;
+  const qaTag=x=>(x&&!qaOrphan(x))?`<span class="qa">${who(x.q)}<b>→</b>${who(x.a)}</span>`:"";
   const pairs=effRawPairs(subj).filter(p=>p.ch>=from&&p.ch<=to);
   document.getElementById("mChapters").innerHTML= total===0
     ? `<div class="none">등록된 챕터가 없어요. 설정 탭에서 추가하세요.</div>`
