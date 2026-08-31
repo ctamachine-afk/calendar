@@ -167,6 +167,8 @@
   .chbtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:6px;width:24px;height:27px;font-size:12px;flex:0 0 auto;padding:0}
   .chbtn:hover{color:var(--txt);border-color:var(--muted)}
   .chbtn.del:hover{color:#f2513c;border-color:#f2513c}
+  .chbtn:disabled{opacity:.3;cursor:default}
+  .chbtn:disabled:hover{color:var(--muted);border-color:var(--line)}
   .chbtn.secbtn{width:auto;padding:0 7px;color:var(--accent)}
   .chbtn.secbtn.on{background:color-mix(in srgb,var(--accent) 20%,transparent)}
   .secedit{padding:5px 0 8px 26px}
@@ -299,7 +301,7 @@
       <div class="secttl">스터디원 관리</div>
       <div class="memrows" id="memRows"></div>
       <button class="btn ghost sm" id="memAdd" style="margin-top:10px">+ 스터디원 추가</button>
-      <div class="callhint">여기 등록한 순서와 무관하게, 일정마다 <b>질문 순서 뽑기</b>를 누르면 순서가 랜덤으로 섞이고, 그 순서대로 <b>앞사람이 뒷사람에게 질문</b>하는 순환 구조로 배정됩니다. 2명 이상 등록해야 질문 배정을 만들 수 있어요.</div>
+      <div class="callhint"><b>↑ ↓</b> 버튼으로 순서를 바꿀 수 있어요. 일정마다 <b>질문 순서 뽑기</b>를 누르면 그 순서대로 <b>앞사람이 뒷사람에게 질문</b>하는 순환 구조로 배정됩니다. 2명 이상 등록해야 질문 배정을 만들 수 있어요.</div>
     </div>
 
     <div class="panel adminOnly">
@@ -739,6 +741,8 @@ function renderMembers(){
     ? ms.map((m,i)=>`<div class="memrow">
         <span class="memnum">${i+1}</span>
         <input class="meminput" value="${escAttr(m.name||"")}" data-i="${i}" placeholder="이름">
+        <button class="chbtn up" data-i="${i}" title="위로" ${i===0?"disabled":""}>↑</button>
+        <button class="chbtn down" data-i="${i}" title="아래로" ${i===ms.length-1?"disabled":""}>↓</button>
         <button class="chbtn del" data-i="${i}" title="삭제">✕</button>
       </div>`).join("")
     : `<div class="muted" style="font-size:13px">아직 등록된 스터디원이 없어요.</div>`;
@@ -746,9 +750,18 @@ function renderMembers(){
     inp.oninput=()=>{ ms[+inp.dataset.i].name=inp.value; saveState(); };
     inp.onkeydown=e=>{ if(e.key==="Enter"){e.preventDefault();addMember();} };
   });
+  el.querySelectorAll(".chbtn.up").forEach(b=>b.onclick=()=>moveMember(+b.dataset.i,-1));
+  el.querySelectorAll(".chbtn.down").forEach(b=>b.onclick=()=>moveMember(+b.dataset.i,1));
   el.querySelectorAll(".chbtn.del").forEach(b=>b.onclick=()=>{
     ms.splice(+b.dataset.i,1); saveState(); renderMembers();
   });
+}
+/* 스터디원 순서 바꾸기 (질문 배정 순서의 기준이 된다) */
+function moveMember(i,d){
+  const ms=members(); const j=i+d;
+  if(j<0||j>=ms.length)return;
+  [ms[i],ms[j]]=[ms[j],ms[i]];
+  saveState(); renderMembers();
 }
 /* ---------- 질문 기록 ---------- */
 function renderLog(){
