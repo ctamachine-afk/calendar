@@ -299,7 +299,7 @@
       <div class="secttl">스터디원 관리</div>
       <div class="memrows" id="memRows"></div>
       <button class="btn ghost sm" id="memAdd" style="margin-top:10px">+ 스터디원 추가</button>
-      <div class="callhint">여기 등록한 순서와 무관하게, 일정마다 <b>질문 순서 뽑기</b>를 누르면 순서가 랜덤으로 섞이고, 그 순서대로 <b>앞사람이 뒷사람에게 질문</b>하는 순환 구조로 배정됩니다. 2명 이상 등록해야 질문 배정을 만들 수 있어요.</div>
+      <div class="callhint">여기 등록한 순서와 무관하게, 일정마다 <b>질문 순서 뽑기</b>를 누르면 순서가 랜덤으로 섞이고, 그 순서대로 <b>앞사람이 뒷사람에게 질문</b>하는 순환 구조로 배정됩니다. 한 일정의 순서는 <b>첫 뽑기에서 정해진 뒤 고정</b>돼요. 2명 이상 등록해야 질문 배정을 만들 수 있어요.</div>
     </div>
 
     <div class="panel adminOnly">
@@ -518,13 +518,52 @@ function orderCount(n,cap){
   for(let i=2;i<=n;i++){ f*=i; if(f>=cap)return cap; }
   return f;
 }
-function buildQA(from,to,subject,excludeId,currentQa){
+/* 저장된 순서를 현재 스터디원 명단에 맞춘다.
+   삭제된 사람은 빼고, 새로 들어온 사람은 뒤에 붙여 기존 순환은 최대한 유지. */
+function reconcileOrder(order,ids){
+  if(!Array.isArray(order))return null;
+  const set=new Set(ids);
+  const kept=order.filter(id=>set.has(id));
+  const rest=ids.filter(id=>!kept.includes(id));
+  const out=kept.concat(rest);
+  return out.length>=2?out:null;
+}
+/* 저장된 배정에서 순환 순서를 되짚는다(순서 기록이 없는 예전 데이터 대비).
+   순환 구조가 아니면 null → 다음 뽑기에서 새로 정한다. */
+function orderFromQA(qa,ids){
+  if(!Array.isArray(qa)||!qa.length)return null;
+  const order=[];
+  for(const x of qa){ if(order.includes(x.q))break; order.push(x.q); }
+  if(order.length<2)return null;
+  const n=order.length;
+  const ok=qa.every((x,i)=>x.q===order[i%n]&&x.a===order[(i+1)%n]);
+  return ok?reconcileOrder(order,ids):null;
+}
+/* 이전 답변자·질문자 반복을 세어 점수화 (낮을수록 좋음) */
+function scoreQA(qa,h){
+  let score=0,rep=0;
+  qa.forEach(x=>{
+    const k=unitKey(x);
+    if(h.ans[k]&&h.ans[k].has(x.a)){score+=10;rep++;}  // 같은 단위 답변자 반복 → 강한 감점
+    if(h.ask[k]&&h.ask[k].has(x.q))score+=1;            // 질문자 반복 → 약한 감점
+  });
+  return {score,rep};
+}
+/* lockedOrder가 있으면 그 순서를 그대로 쓴다(일정마다 첫 뽑기 순서 고정).
+   없으면 새로 뽑아 그 순서를 함께 돌려준다 → 호출한 쪽이 저장해 다음부터 고정. */
+function buildQA(from,to,subject,excludeId,currentQa,lockedOrder){
   const ids=members().filter(m=>(m.name||"").trim()).map(m=>m.id);
   if(ids.length<2)return null;
   const units=chapUnits(subject,from,to);
   if(!units.length)return null;
   const n=ids.length;
   const h=qaHistory(subject,excludeId);
+  // 이미 이 일정의 순서가 정해져 있으면 다시 뽑아도 그대로 (챕터 범위만 새로 채운다)
+  const locked=reconcileOrder(lockedOrder,ids);
+  if(locked){
+    const qa=drawAssign(locked,units);
+    return {qa, order:locked, repeats:scoreQA(qa,h).rep, options:1, locked:true};
+  }
   // 후보 = 서로 다른 '순환 순서'들. 순서 하나가 전체 배정 하나를 결정한다.
   const target=orderCount(n,200);
   const cands=[]; const seen=new Set();
@@ -532,18 +571,13 @@ function buildQA(from,to,subject,excludeId,currentQa){
     const order=shuffled(ids);
     const key=order.join(">");
     if(seen.has(key))continue;
-    seen.add(key); cands.push(drawAssign(order,units));
+    seen.add(key); cands.push({order,qa:drawAssign(order,units)});
   }
   let minScore=Infinity;
-  const scored=cands.map(qa=>{
-    let score=0,rep=0;
-    qa.forEach(x=>{
-      const k=unitKey(x);
-      if(h.ans[k]&&h.ans[k].has(x.a)){score+=10;rep++;}  // 같은 단위 답변자 반복 → 강한 감점
-      if(h.ask[k]&&h.ask[k].has(x.q))score+=1;            // 질문자 반복 → 약한 감점
-    });
+  const scored=cands.map(c=>{
+    const {score,rep}=scoreQA(c.qa,h);
     if(score<minScore)minScore=score;
-    return {qa,score,rep};
+    return {qa:c.qa,order:c.order,score,rep};
   });
   // 최소 점수 후보만, 중복 배정 제거
   const bestMap=new Map();
@@ -557,7 +591,7 @@ function buildQA(from,to,subject,excludeId,currentQa){
     if(diff.length)pool=diff;
   }
   const pick=pool[Math.floor(Math.random()*pool.length)];
-  return {qa:pick.qa, repeats:pick.rep, options};
+  return {qa:pick.qa, order:pick.order, repeats:pick.rep, options, locked:false};
 }
 
 const CHAP_VER="core2026-v1"; // 기본 챕터 버전 (바뀌면 기본값 재적용)
@@ -1178,9 +1212,11 @@ let editingId=null;
 let chapSel={from:1,to:1}; // 모달에서 현재 선택된 파트 챕터 범위(1-index)
 let modalRO=false;         // 모달 보기 전용 여부
 let modalQA=null;          // 모달에서 편집 중인 질문 배정 [{ch,q,a}]
+let modalQAOrder=null;     // 이 일정의 순환 순서(첫 뽑기에서 정해져 고정) [memberId,...]
 let modalAbsent=[];        // 이 일정에서 불참 처리한 스터디원 id 목록
 let lastRepeats=0;         // 직전 뽑기에서 이전 답변자와 겹친 챕터 수
 let lastOptions=0;         // 직전 뽑기에서 조건을 만족하는 서로 다른 조합 수
+let lastLocked=false;      // 직전 뽑기가 이미 고정된 순서를 그대로 쓴 것인지
 function setModalReadonly(ro){
   modalRO=ro;
   ["mSubject","mRound","mParts","mPart","mStart","mEnd","mDone","mChapFrom","mChapTo"]
@@ -1274,17 +1310,15 @@ function renderQANote(){
   const has=!!(modalQA&&modalQA.length);
   const clr=document.getElementById("mClearQA");
   if(clr) clr.style.display = has ? "inline-block" : "none";
+  const orderTxt=(modalQAOrder||[]).filter(id=>!memberGone(id)).map(memberName).join(" → ");
   note.innerHTML = n<2
     ? `설정 탭에서 <b>스터디원을 2명 이상</b> 등록하면 질문 순서를 뽑을 수 있어요.`
     : (modalQA&&modalQA.length
-        ? `저장됨 · 다시 누르기 전까지 유지돼요.`
-          + (lastRepeats<0 ? ``
-             : lastRepeats>0
+        ? `저장됨 · 이 일정의 순서는 <b>${orderTxt||"첫 뽑기"}</b> 로 고정됐어요. 다시 눌러도 그대로이고, 새 순서로 바꾸려면 <b>지우기</b> 후 다시 뽑으세요.`
+          + (lastRepeats>0
               ? ` <span style="color:var(--s3)">스터디원이 적어 ${lastRepeats}개 챕터는 이전 답변자와 겹칩니다.</span>`
-              : lastOptions<=1
-              ? ` <span style="color:var(--s3)">조건을 만족하는 조합이 이것뿐이라 다시 눌러도 그대로예요.</span>`
-              : ` 같은 챕터의 <b>이전 답변자</b>는 피해서 배정했어요. 다시 누르면 다른 조합이 나와요.`)
-        : `누르면 스터디원 순서를 랜덤으로 섞어 <b>순환 구조</b>로 배정해요(예: b→a, a→c, c→b). 같은 챕터를 전에 답변한 사람은 피합니다.`);
+              : ``)
+        : `누르면 스터디원 순서를 랜덤으로 섞어 <b>순환 구조</b>로 배정해요(예: b→a, a→c, c→b). 이 일정의 순서는 <b>첫 뽑기에서 정해진 뒤 고정</b>됩니다.`);
 }
 /* 현재 모달의 챕터 범위에 질문 배정 생성 → 즉시 저장 */
 function rollQA(){
@@ -1293,24 +1327,24 @@ function rollQA(){
   const total=effChapters(subj).length;
   if(!total){ alert("이 과목에 등록된 챕터가 없어요."); return; }
   const from=(parts>1)?chapSel.from:1, to=(parts>1)?chapSel.to:total;
-  const r=buildQA(from,to,subj,editingId,modalQA);
+  const r=buildQA(from,to,subj,editingId,modalQA,modalQAOrder);
   if(!r){ alert("스터디원을 2명 이상 등록해 주세요. (설정 탭 → 스터디원 관리)"); return; }
-  modalQA=r.qa; lastRepeats=r.repeats; lastOptions=r.options;
+  modalQA=r.qa; modalQAOrder=r.order.slice(); lastRepeats=r.repeats; lastOptions=r.options; lastLocked=r.locked;
   // 이미 등록된 일정이면 뽑는 즉시 저장 (취소해도 유지)
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    if(b){ b.qa=modalQA.map(x=>({...x})); saveState(); }
+    if(b){ b.qa=modalQA.map(x=>({...x})); b.qaOrder=modalQAOrder.slice(); saveState(); }
   }
   renderChapSection();
 }
 /* 질문 배정 지우기 → 즉시 저장 */
 function clearQA(){
   if(!modalQA||!modalQA.length)return;
-  if(!confirm("이 일정의 질문 순서를 지울까요?"))return;
-  modalQA=null; modalAbsent=[]; lastRepeats=-1; lastOptions=0;
+  if(!confirm("이 일정의 질문 순서를 지울까요?\n(고정된 순서도 풀려서 다시 뽑으면 새 순서가 나와요.)"))return;
+  modalQA=null; modalQAOrder=null; modalAbsent=[]; lastRepeats=-1; lastOptions=0; lastLocked=false;
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    if(b){ b.qa=null; b.absent=null; saveState(); }
+    if(b){ b.qa=null; b.qaOrder=null; b.absent=null; saveState(); }   // 지우면 순서 고정도 풀린다
   }
   renderChapSection();
 }
@@ -1399,7 +1433,7 @@ function openCreate(start,end){
   document.getElementById("mDone").checked=false;
   document.getElementById("mDelete").style.display="none";
   partsManual=false;
-  modalQA=null; modalAbsent=[]; lastRepeats=-1;
+  modalQA=null; modalQAOrder=null; modalAbsent=[]; lastRepeats=-1; lastLocked=false;
   refreshChap();
   setModalReadonly(false);
   updatePartHint();
@@ -1419,7 +1453,11 @@ function openEdit(id,readonly){
   document.getElementById("mDelete").style.display=readonly?"none":"inline-block";
   partsManual=false;continued=false;
   modalQA=Array.isArray(b.qa)?b.qa.map(x=>({...x})):null;
-  modalAbsent=Array.isArray(b.absent)?b.absent.slice():[]; lastRepeats=-1;
+  // 순서 기록이 없는 예전 일정은 저장된 배정에서 순환 순서를 되짚어 고정한다
+  modalQAOrder=Array.isArray(b.qaOrder)&&b.qaOrder.length>=2
+    ? b.qaOrder.slice()
+    : orderFromQA(modalQA,members().filter(m=>(m.name||"").trim()).map(m=>m.id));
+  modalAbsent=Array.isArray(b.absent)?b.absent.slice():[]; lastRepeats=-1; lastLocked=false;
   if((b.parts||1)>1&&b.chapFrom)chapSel={from:b.chapFrom,to:b.chapTo};else applyAutoChap();
   renderChapSection();
   setModalReadonly(!!readonly);
@@ -1456,11 +1494,12 @@ document.getElementById("mSave").onclick=()=>{
   // 남은 배정에 실제로 낀 불참자만 저장 (배정 없으면 불참도 무의미)
   const absent=qa.length?modalAbsent.filter(id=>qa.some(x=>x.q===id||x.a===id)):null;
   const absSave=absent&&absent.length?absent:null;
+  const orderSave=qa.length&&modalQAOrder&&modalQAOrder.length>=2?modalQAOrder.slice():null;
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    Object.assign(b,{subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,absent:absSave});
+    Object.assign(b,{subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,qaOrder:orderSave,absent:absSave});
   }else{
-    state.blocks.push({id:Date.now()+Math.floor(Math.random()*1000),subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,absent:absSave});
+    state.blocks.push({id:Date.now()+Math.floor(Math.random()*1000),subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,qaOrder:orderSave,absent:absSave});
     state.defRound=round;
   }
   saveState();closeModal();render();
