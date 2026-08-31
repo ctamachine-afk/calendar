@@ -498,20 +498,20 @@ function qaHistory(subject,excludeId){
   return {ans,ask};
 }
 /* 질문자→답변자 배정.
-   n명 단위(블록)로 끊어, 블록마다 질문자 순서를 새로 섞고
-   답변자는 그 블록 질문자들의 '고정점 없는 순열'(자기 자신 제외)로 정한다.
-   → 블록마다 배열이 달라져 챕터를 내려가며 같은 패턴이 반복되지 않는다.
+   질문자 순서는 한 번 정해 전체 챕터에 반복(예: b→a→c, b→a→c…)
+   → 참여자가 균등한 간격으로 질문해 덜 지친다.
+   답변자는 n명 블록마다 새로 섞어(질문자의 고정점 없는 순열) 짝이 매번 달라진다.
    각 블록에서 모두가 정확히 한 번 질문하고 한 번 답변(공평), q≠a.
    ① 같은 챕터의 '이전 답변자'와 겹치지 않는 후보를 우선,
    ② 그런 후보가 여럿이면 '지금 화면과 다른' 걸 골라 매번 바뀌게 한다.
    배정 단위 = chapUnits (섹션이 있으면 섹션마다, 없으면 챕터). */
 const qaSig=qa=>qa.map(x=>unitKey(x)+":"+x.q+">"+x.a).join(",");
-/* 한 번의 무작위 배정 생성: n명 블록마다 질문자/답변자를 새로 섞는다. */
+/* 한 번의 무작위 배정 생성: 질문자 순서는 고정 반복, 답변자만 블록마다 새로 섞는다. */
 function drawAssign(ids,units){
   const n=ids.length, out=[];
+  const q=shuffled(ids);   // 질문자 순서: 한 번 정해 전체에 반복 → 각자 균등한 간격으로 질문
   for(let i=0;i<units.length;i+=n){
-    const q=shuffled(ids);
-    let a; do{ a=shuffled(ids); }while(a.some((v,j)=>v===q[j])); // 고정점 없는 순열(q≠a, 각자 한 번씩 답변)
+    let a; do{ a=shuffled(q); }while(a.some((v,j)=>v===q[j])); // 질문자의 고정점 없는 순열(q≠a, 블록마다 각자 한 번 답변)
     for(let j=0;j<n && i+j<units.length;j++){
       const u=units[i+j];
       out.push({ch:u.ch,sec:u.sec,q:q[j],a:a[j]});
