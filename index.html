@@ -299,7 +299,7 @@
       <div class="secttl">스터디원 관리</div>
       <div class="memrows" id="memRows"></div>
       <button class="btn ghost sm" id="memAdd" style="margin-top:10px">+ 스터디원 추가</button>
-      <div class="callhint">여기 등록한 순서와 무관하게, 일정마다 <b>질문 순서 뽑기</b>를 누르면 순서가 랜덤으로 섞입니다. 2명 이상 등록해야 질문 배정을 만들 수 있어요.</div>
+      <div class="callhint">여기 등록한 순서와 무관하게, 일정마다 <b>질문 순서 뽑기</b>를 누르면 순서가 랜덤으로 섞이고, 그 순서대로 <b>앞사람이 뒷사람에게 질문</b>하는 순환 구조로 배정됩니다. 2명 이상 등록해야 질문 배정을 만들 수 있어요.</div>
     </div>
 
     <div class="panel adminOnly">
@@ -497,27 +497,26 @@ function qaHistory(subject,excludeId){
   });
   return {ans,ask};
 }
-/* 질문자→답변자 배정.
-   질문자 순서는 한 번 정해 전체 챕터에 반복(예: b→a→c, b→a→c…)
-   → 참여자가 균등한 간격으로 질문해 덜 지친다.
-   답변자는 n명 블록마다 새로 섞어(질문자의 고정점 없는 순열) 짝이 매번 달라진다.
-   각 블록에서 모두가 정확히 한 번 질문하고 한 번 답변(공평), q≠a.
-   ① 같은 챕터의 '이전 답변자'와 겹치지 않는 후보를 우선,
+/* 질문자→답변자 배정(순환 구조).
+   뽑은 순서대로 앞사람이 뒷사람에게 질문하고, 마지막 사람은 처음으로 돌아간다.
+   예) 순서가 b→a→c 이면  b가 a에게, a가 c에게, c가 b에게 질문.
+   한 번 뽑은 순서는 그 뽑기 안에서는 끝까지 그대로 반복된다(챕터마다 바뀌지 않음).
+   → 한 바퀴(n명)마다 모두가 정확히 한 번 질문하고 한 번 답변(공평), q≠a.
+   다시 뽑으면 순서를 새로 섞으므로 뽑기마다 다른 순환이 나온다.
+   ① 같은 챕터의 '이전 답변자'와 겹치지 않는 순서를 우선,
    ② 그런 후보가 여럿이면 '지금 화면과 다른' 걸 골라 매번 바뀌게 한다.
    배정 단위 = chapUnits (섹션이 있으면 섹션마다, 없으면 챕터). */
 const qaSig=qa=>qa.map(x=>unitKey(x)+":"+x.q+">"+x.a).join(",");
-/* 한 번의 무작위 배정 생성: 질문자 순서는 고정 반복, 답변자만 블록마다 새로 섞는다. */
-function drawAssign(ids,units){
-  const n=ids.length, out=[];
-  const q=shuffled(ids);   // 질문자 순서: 한 번 정해 전체에 반복 → 각자 균등한 간격으로 질문
-  for(let i=0;i<units.length;i+=n){
-    let a; do{ a=shuffled(q); }while(a.some((v,j)=>v===q[j])); // 질문자의 고정점 없는 순열(q≠a, 블록마다 각자 한 번 답변)
-    for(let j=0;j<n && i+j<units.length;j++){
-      const u=units[i+j];
-      out.push({ch:u.ch,sec:u.sec,q:q[j],a:a[j]});
-    }
-  }
-  return out;
+/* 하나의 순환 순서(order)로 전체 단위를 채운다: i번째 단위는 order[i]가 order[i+1]에게 질문. */
+function drawAssign(order,units){
+  const n=order.length;
+  return units.map((u,i)=>({ch:u.ch,sec:u.sec,q:order[i%n],a:order[(i+1)%n]}));
+}
+/* n명으로 만들 수 있는 서로 다른 순환 순서의 개수(n!), 너무 크면 cap에서 끊는다. */
+function orderCount(n,cap){
+  let f=1;
+  for(let i=2;i<=n;i++){ f*=i; if(f>=cap)return cap; }
+  return f;
 }
 function buildQA(from,to,subject,excludeId,currentQa){
   const ids=members().filter(m=>(m.name||"").trim()).map(m=>m.id);
@@ -526,14 +525,14 @@ function buildQA(from,to,subject,excludeId,currentQa){
   if(!units.length)return null;
   const n=ids.length;
   const h=qaHistory(subject,excludeId);
-  // 후보를 매번 새로 무작위 생성 (블록마다 다른 셔플 → 반복 패턴 방지)
-  const target=1000;
+  // 후보 = 서로 다른 '순환 순서'들. 순서 하나가 전체 배정 하나를 결정한다.
+  const target=orderCount(n,200);
   const cands=[]; const seen=new Set();
-  for(let t=0; t<8000 && cands.length<target; t++){
-    const qa=drawAssign(ids,units);
-    const sig=qaSig(qa);
-    if(seen.has(sig))continue;
-    seen.add(sig); cands.push(qa);
+  for(let t=0; t<4000 && cands.length<target; t++){
+    const order=shuffled(ids);
+    const key=order.join(">");
+    if(seen.has(key))continue;
+    seen.add(key); cands.push(drawAssign(order,units));
   }
   let minScore=Infinity;
   const scored=cands.map(qa=>{
@@ -1285,7 +1284,7 @@ function renderQANote(){
               : lastOptions<=1
               ? ` <span style="color:var(--s3)">조건을 만족하는 조합이 이것뿐이라 다시 눌러도 그대로예요.</span>`
               : ` 같은 챕터의 <b>이전 답변자</b>는 피해서 배정했어요. 다시 누르면 다른 조합이 나와요.`)
-        : `누르면 스터디원 순서를 랜덤으로 섞어 배정해요. 같은 챕터를 전에 답변한 사람은 피합니다.`);
+        : `누르면 스터디원 순서를 랜덤으로 섞어 <b>순환 구조</b>로 배정해요(예: b→a, a→c, c→b). 같은 챕터를 전에 답변한 사람은 피합니다.`);
 }
 /* 현재 모달의 챕터 범위에 질문 배정 생성 → 즉시 저장 */
 function rollQA(){
