@@ -521,14 +521,15 @@ function orderCount(n,cap){
   for(let i=2;i<=n;i++){ f*=i; if(f>=cap)return cap; }
   return f;
 }
-function buildQA(from,to,subject,excludeId,currentQa){
+function buildQA(from,to,subject,excludeId,currentQa,drawNo){
   const ids=members().filter(m=>(m.name||"").trim()).map(m=>m.id);
   if(ids.length<2)return null;
   const units=chapUnits(subject,from,to);
   if(!units.length)return null;
   const n=ids.length;
   const h=qaHistory(subject,excludeId);
-  if(!currentQa||!currentQa.length){
+  const seq=Math.max(1,Number(drawNo)||1);
+  if(seq===1||seq===3||!currentQa||!currentQa.length){
     const qa=drawAssign(ids,units);
     let rep=0;
     qa.forEach(x=>{ const k=unitKey(x); if(h.ans[k]&&h.ans[k].has(x.a))rep++; });
@@ -1198,6 +1199,7 @@ let editingId=null;
 let chapSel={from:1,to:1}; // 모달에서 현재 선택된 파트 챕터 범위(1-index)
 let modalRO=false;         // 모달 보기 전용 여부
 let modalQA=null;          // 모달에서 편집 중인 질문 배정 [{ch,q,a}]
+let modalQAN=0;            // 이 일정에서 질문 순서를 뽑은 횟수
 let modalAbsent=[];        // 이 일정에서 불참 처리한 스터디원 id 목록
 let lastRepeats=0;         // 직전 뽑기에서 이전 답변자와 겹친 챕터 수
 let lastOptions=0;         // 직전 뽑기에서 조건을 만족하는 서로 다른 조합 수
@@ -1317,13 +1319,13 @@ function rollQA(){
   const total=effChapters(subj).length;
   if(!total){ alert("이 과목에 등록된 챕터가 없어요."); return; }
   const from=(parts>1)?chapSel.from:1, to=(parts>1)?chapSel.to:total;
-  const r=buildQA(from,to,subj,editingId,modalQA);
+  const r=buildQA(from,to,subj,editingId,modalQA,modalQAN+1);
   if(!r){ alert("스터디원을 2명 이상 등록해 주세요. (설정 탭 → 스터디원 관리)"); return; }
-  modalQA=r.qa; lastRepeats=r.repeats; lastOptions=r.options;
+  modalQA=r.qa; modalQAN++; lastRepeats=r.repeats; lastOptions=r.options;
   // 이미 등록된 일정이면 뽑는 즉시 저장 (취소해도 유지)
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    if(b){ b.qa=modalQA.map(x=>({...x})); saveState(); }
+    if(b){ b.qa=modalQA.map(x=>({...x})); b.qaN=modalQAN; saveState(); }
   }
   renderChapSection();
 }
@@ -1331,10 +1333,10 @@ function rollQA(){
 function clearQA(){
   if(!modalQA||!modalQA.length)return;
   if(!confirm("이 일정의 질문 순서를 지울까요?"))return;
-  modalQA=null; modalAbsent=[]; lastRepeats=-1; lastOptions=0;
+  modalQA=null; modalQAN=0; modalAbsent=[]; lastRepeats=-1; lastOptions=0;
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    if(b){ b.qa=null; b.absent=null; saveState(); }
+    if(b){ b.qa=null; b.qaN=0; b.absent=null; saveState(); }
   }
   renderChapSection();
 }
@@ -1423,7 +1425,7 @@ function openCreate(start,end){
   document.getElementById("mDone").checked=false;
   document.getElementById("mDelete").style.display="none";
   partsManual=false;
-  modalQA=null; modalAbsent=[]; lastRepeats=-1;
+  modalQA=null; modalQAN=0; modalAbsent=[]; lastRepeats=-1;
   refreshChap();
   setModalReadonly(false);
   updatePartHint();
@@ -1443,6 +1445,7 @@ function openEdit(id,readonly){
   document.getElementById("mDelete").style.display=readonly?"none":"inline-block";
   partsManual=false;continued=false;
   modalQA=Array.isArray(b.qa)?b.qa.map(x=>({...x})):null;
+  modalQAN=Number(b.qaN)||(modalQA&&modalQA.length?1:0);
   modalAbsent=Array.isArray(b.absent)?b.absent.slice():[]; lastRepeats=-1;
   if((b.parts||1)>1&&b.chapFrom)chapSel={from:b.chapFrom,to:b.chapTo};else applyAutoChap();
   renderChapSection();
@@ -1480,11 +1483,12 @@ document.getElementById("mSave").onclick=()=>{
   // 남은 배정에 실제로 낀 불참자만 저장 (배정 없으면 불참도 무의미)
   const absent=qa.length?modalAbsent.filter(id=>qa.some(x=>x.q===id||x.a===id)):null;
   const absSave=absent&&absent.length?absent:null;
+  const qn=qa.length?modalQAN:0;
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    Object.assign(b,{subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,absent:absSave});
+    Object.assign(b,{subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,qaN:qn,absent:absSave});
   }else{
-    state.blocks.push({id:Date.now()+Math.floor(Math.random()*1000),subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,absent:absSave});
+    state.blocks.push({id:Date.now()+Math.floor(Math.random()*1000),subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,qaN:qn,absent:absSave});
     state.defRound=round;
   }
   saveState();closeModal();render();
