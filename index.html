@@ -181,6 +181,7 @@
   .lockpill{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 13px}
   .adminbar input{width:100px;letter-spacing:3px;text-align:center}
   body.locked .adminOnly{display:none!important}
+  body:not(.locked) .memberOnly{display:none!important}
   body.locked .brow .del{display:none}
   body.locked .daycell{cursor:default}
   body.locked .bar{cursor:pointer}
@@ -261,7 +262,7 @@
     <div class="panel">
       <div class="secttl">챕터별 질문 기록</div>
       <div id="logBody"></div>
-      <div class="callhint">일정에서 <b>질문 순서 뽑기</b>를 한 챕터만 표시됩니다. <b>질문자 → 답변자</b> 순이에요.</div>
+      <div class="callhint"><span class="adminOnly">일정에서 <b>질문 순서 뽑기</b>를 한 챕터만 표시됩니다. </span><span class="memberOnly">질문 순서가 정해진 챕터만 표시됩니다. </span><b>질문자 → 답변자</b> 순이에요.</div>
     </div>
   </div>
 
@@ -334,7 +335,7 @@
       <div class="mhint" id="mHint"></div>
     </div>
     <div class="mfld">
-      <label>주요 챕터 <span class="muted" style="font-weight:400">· 설정 탭에서 챕터·섹션 편집</span></label>
+      <label>주요 챕터 <span class="muted adminOnly" style="font-weight:400">· 설정 탭에서 챕터·섹션 편집</span></label>
       <div class="chaprange" id="mChapRange" style="display:none">
         <span class="rlbl">이 파트 범위</span>
         <select id="mChapFrom"></select>
@@ -819,7 +820,7 @@ function renderLog(){
           <div class="lh"><i style="background:${colorOf(subj)}"></i>${esc(subj)}
             <span class="cnt">${nCh}개 챕터</span></div>${rows}</div>`;
       }).join("")
-    : `<div class="muted" style="font-size:13px">아직 질문 순서를 뽑은 일정이 없어요. 캘린더에서 일정을 열고 <b>🎲 질문 순서 뽑기</b>를 눌러보세요.</div>`;
+    : `<div class="muted" style="font-size:13px">아직 질문 순서가 정해진 일정이 없어요.${canEdit?" 캘린더에서 일정을 열고 <b>🎲 질문 순서 뽑기</b>를 눌러보세요.":""}</div>`;
 }
 
 /* ---------- 백업 / 복원 ---------- */
@@ -1247,7 +1248,7 @@ function renderChapSection(){
   const qaTag=x=>(x&&!qaOrphan(x))?`<span class="qa">${who(x.q)}<b>→</b>${who(x.a)}</span>`:"";
   const pairs=effRawPairs(subj).filter(p=>p.ch>=from&&p.ch<=to);
   document.getElementById("mChapters").innerHTML= total===0
-    ? `<div class="none">등록된 챕터가 없어요. 설정 탭에서 추가하세요.</div>`
+    ? `<div class="none">등록된 챕터가 없어요.${canEdit?" 설정 탭에서 추가하세요.":""}</div>`
     : (pairs.length
         ? `<ul class="chaptree">`+pairs.map(p=>{
             const secs=sectionsAt(subj,p.ri);
@@ -1293,6 +1294,10 @@ function renderQANote(){
   const has=!!(modalQA&&modalQA.length);
   const clr=document.getElementById("mClearQA");
   if(clr) clr.style.display = has ? "inline-block" : "none";
+  if(!canEdit){   // 보기 전용: 관리자용 조작 안내는 감춘다
+    note.innerHTML = has ? `<b>질문자 → 답변자</b> 순이에요.` : `아직 질문 순서가 정해지지 않았어요.`;
+    return;
+  }
   note.innerHTML = n<2
     ? `설정 탭에서 <b>스터디원을 2명 이상</b> 등록하면 질문 순서를 뽑을 수 있어요.`
     : (modalQA&&modalQA.length
@@ -1385,10 +1390,10 @@ function updatePartHint(){
   const others=state.blocks.filter(b=>b.id!=editingId&&b.subject===subj&&b.round===round&&(b.parts||1)>1)
     .sort((a,b)=>(a.part||1)-(b.part||1));
   let hint = parts<=1
-    ? "여러 기간으로 쪼개려면 파트 수를 2 이상으로 지정하세요. (예: 법인세 1/3, 2/3, 3/3)"
+    ? (canEdit?"여러 기간으로 쪼개려면 파트 수를 2 이상으로 지정하세요. (예: 법인세 1/3, 2/3, 3/3)":"")
     : (others.length
         ? "이 법·회독에 등록된 파트: "+others.map(b=>`${b.part||1}/${b.parts} <span class='muted'>(${fmtK(parse(b.start))}~${fmtK(parse(b.end))})</span>`).join(", ")
-        : "이 법·회독의 첫 파트예요. 나머지 파트는 다른 기간을 드래그해 추가하세요.");
+        : (canEdit?"이 법·회독의 첫 파트예요. 나머지 파트는 다른 기간을 드래그해 추가하세요.":"이 법·회독의 첫 파트예요."));
   if(continued&&parts>1)
     hint=`🔗 <b style="color:var(--accent)">이전 파트에 이어 ${partEl.value}/${parts}</b>로 자동 설정했어요. 챕터도 이어서 채워집니다.<br>`+hint;
   document.getElementById("mPartHint").innerHTML=hint;
