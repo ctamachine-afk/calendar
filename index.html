@@ -119,9 +119,17 @@
   .seclist li:before{content:"└";color:var(--muted);position:absolute;left:-13px}
   .chaplist li .qa b{color:var(--accent);font-weight:700;margin:0 2px}
   .chaplist li .qa .who{color:var(--txt);font-weight:600}
-  .qarow{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .qarow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
   .qarow .btn{flex:0 0 auto}
-  .qanote{font-size:11px;color:var(--muted);line-height:1.4}
+  /* 자리가 모자라면 안내문구가 아랫줄로 내려간다 */
+  .qanote{font-size:11px;color:var(--muted);line-height:1.4;flex:1 1 150px;min-width:0}
+  /* 뽑기 방식 선택(순환 / 랜덤) */
+  .qamode{display:inline-flex;flex:0 0 auto;background:var(--panel2);border:1px solid var(--line);
+    border-radius:999px;padding:2px;gap:2px}
+  .qamodebtn{background:transparent;border:0;color:var(--muted);border-radius:999px;
+    padding:4px 10px;font-size:11.5px;cursor:pointer;white-space:nowrap}
+  .qamodebtn:hover{color:var(--txt)}
+  .qamodebtn.on{background:rgba(79,157,255,.16);color:var(--accent);font-weight:700}
   /* 불참 처리: 불참자 이름만 취소선, 상대(참석자)는 그대로 */
   .chaplist li .qa .who.off,.asgtag .who.off{color:var(--muted);text-decoration:line-through;opacity:.65;font-weight:400}
   .qa .offlbl{text-decoration:none;margin-left:4px;font-size:9.5px;color:var(--s4);
@@ -344,6 +352,10 @@
       </div>
       <div class="chaplist" id="mChapters"></div>
       <div class="qarow">
+        <div class="qamode adminOnly" id="mQAMode">
+          <button type="button" class="qamodebtn" data-mode="cycle">🔁 순환</button>
+          <button type="button" class="qamodebtn" data-mode="random">🎯 랜덤</button>
+        </div>
         <button class="btn ghost sm adminOnly" id="mRollQA" type="button">🎲 질문 순서 뽑기</button>
         <button class="btn ghost sm adminOnly" id="mClearQA" type="button" style="display:none">🧹 지우기</button>
         <span class="qanote" id="mQANote"></span>
@@ -509,6 +521,12 @@ function qaHistory(subject,excludeId){
    ① 같은 챕터의 '이전 답변자'와 겹치지 않는 순서를 우선,
    ② 그런 후보가 여럿이면 '지금 화면과 다른' 걸 골라 매번 바뀌게 한다.
    배정 단위 = chapUnits (섹션이 있으면 섹션마다, 없으면 챕터). */
+/* 뽑기 방식 두 가지: 순환(cycle) / 랜덤(random) */
+const QA_CYCLE="cycle", QA_RANDOM="random";
+const QAMODE_KEY="sebup_qamode";
+const normMode=m=>m===QA_RANDOM?QA_RANDOM:QA_CYCLE;
+/* 마지막으로 고른 방식을 기억해 다음 일정의 기본값으로 쓴다 */
+function savedQAMode(){ try{return normMode(localStorage.getItem(QAMODE_KEY));}catch(e){return QA_CYCLE;} }
 const qaSig=qa=>qa.map(x=>unitKey(x)+":"+x.q+">"+x.a).join(",");
 /* 하나의 순환 순서(order)로 전체 단위를 채운다: i번째 단위는 order[i]가 order[i+1]에게 질문. */
 function drawAssign(order,units){
@@ -521,29 +539,44 @@ function orderCount(n,cap){
   for(let i=2;i<=n;i++){ f*=i; if(f>=cap)return cap; }
   return f;
 }
-function buildQA(from,to,subject,excludeId,currentQa,drawNo){
-  const ids=members().filter(m=>(m.name||"").trim()).map(m=>m.id);
-  if(ids.length<2)return null;
-  const units=chapUnits(subject,from,to);
-  if(!units.length)return null;
-  const n=ids.length;
-  const h=qaHistory(subject,excludeId);
-  const seq=Math.max(1,Number(drawNo)||1);
-  if(seq===1||seq===3||!currentQa||!currentQa.length){
-    const qa=drawAssign(ids,units);
-    let rep=0;
-    qa.forEach(x=>{ const k=unitKey(x); if(h.ans[k]&&h.ans[k].has(x.a))rep++; });
-    return {qa, repeats:rep, options:orderCount(n,200)};
+/* ── 랜덤 배정 ──
+   순환 구조에 묶이지 않고 단위마다 자유롭게 짝을 짓는다(순환 모양이 나올 수도 있음).
+   대신 1인당 질문 횟수는 똑같이 맞춘다. 단위 수가 인원으로 안 나눠떨어지면
+   누가 한 번 더 할지는 랜덤(최대 1회 차이). 답변 횟수도 같은 방식으로 고르게 맞춘다. */
+/* 사람마다 횟수를 최대한 고르게 채운 길이 len 짜리 명단 */
+function evenPool(ids,len){
+  const base=Math.floor(len/ids.length);
+  const extra=shuffled(ids).slice(0,len%ids.length);   // 한 번 더 하는 사람
+  const pool=[];
+  ids.forEach(id=>{ const c=base+(extra.includes(id)?1:0); for(let i=0;i<c;i++)pool.push(id); });
+  return shuffled(pool);
+}
+/* 자기 자신에게 질문하는 자리를 다른 자리와 답변자를 맞바꿔 없앤다 (횟수는 그대로 유지) */
+function fixSelfPairs(qs,as){
+  for(let i=0;i<qs.length;i++){
+    if(qs[i]!==as[i])continue;
+    let j=-1;
+    for(let k=0;k<qs.length;k++){
+      if(k===i)continue;
+      if(as[k]!==qs[i]&&qs[k]!==qs[i]){ j=k; break; }   // 바꿔도 양쪽 모두 q≠a
+    }
+    if(j<0)return false;
+    [as[i],as[j]]=[as[j],as[i]];
   }
-  // 후보 = 서로 다른 '순환 순서'들. 순서 하나가 전체 배정 하나를 결정한다.
-  const target=orderCount(n,200);
-  const cands=[]; const seen=new Set();
-  for(let t=0; t<4000 && cands.length<target; t++){
-    const order=shuffled(ids);
-    const key=order.join(">");
-    if(seen.has(key))continue;
-    seen.add(key); cands.push(drawAssign(order,units));
+  return true;
+}
+/* 질문 횟수를 고르게 맞춘 랜덤 배정 하나 (끝내 못 만들면 순환 배정으로 대체) */
+function randomAssign(ids,units){
+  const qs=evenPool(ids,units.length);
+  for(let t=0;t<60;t++){
+    const as=evenPool(ids,units.length);
+    if(fixSelfPairs(qs,as))
+      return units.map((u,i)=>({ch:u.ch,sec:u.sec,q:qs[i],a:as[i]}));
   }
+  return drawAssign(shuffled(ids),units);
+}
+/* 후보 배정들 중 이전 기록과 가장 덜 겹치는 것을 고른다 (같으면 지금 화면과 다른 걸 우선) */
+function pickBest(cands,h,currentQa){
   let minScore=Infinity;
   const scored=cands.map(qa=>{
     let score=0,rep=0;
@@ -568,6 +601,42 @@ function buildQA(from,to,subject,excludeId,currentQa,drawNo){
   }
   const pick=pool[Math.floor(Math.random()*pool.length)];
   return {qa:pick.qa, repeats:pick.rep, options};
+}
+function buildQA(from,to,subject,excludeId,currentQa,drawNo,mode){
+  const ids=members().filter(m=>(m.name||"").trim()).map(m=>m.id);
+  if(ids.length<2)return null;
+  const units=chapUnits(subject,from,to);
+  if(!units.length)return null;
+  const n=ids.length;
+  const h=qaHistory(subject,excludeId);
+  if(mode===QA_RANDOM){
+    // 후보 = 서로 다른 랜덤 배정들
+    const cands=[]; const seen=new Set();
+    for(let t=0; t<600 && cands.length<80; t++){
+      const qa=randomAssign(ids,units);
+      const key=qaSig(qa);
+      if(seen.has(key))continue;
+      seen.add(key); cands.push(qa);
+    }
+    return pickBest(cands,h,currentQa);
+  }
+  const seq=Math.max(1,Number(drawNo)||1);
+  if(seq===1||seq===3||!currentQa||!currentQa.length){
+    const qa=drawAssign(ids,units);
+    let rep=0;
+    qa.forEach(x=>{ const k=unitKey(x); if(h.ans[k]&&h.ans[k].has(x.a))rep++; });
+    return {qa, repeats:rep, options:orderCount(n,200)};
+  }
+  // 후보 = 서로 다른 '순환 순서'들. 순서 하나가 전체 배정 하나를 결정한다.
+  const target=orderCount(n,200);
+  const cands=[]; const seen=new Set();
+  for(let t=0; t<4000 && cands.length<target; t++){
+    const order=shuffled(ids);
+    const key=order.join(">");
+    if(seen.has(key))continue;
+    seen.add(key); cands.push(drawAssign(order,units));
+  }
+  return pickBest(cands,h,currentQa);
 }
 
 const CHAP_VER="core2026-v1"; // 기본 챕터 버전 (바뀌면 기본값 재적용)
@@ -1200,6 +1269,7 @@ let chapSel={from:1,to:1}; // 모달에서 현재 선택된 파트 챕터 범위
 let modalRO=false;         // 모달 보기 전용 여부
 let modalQA=null;          // 모달에서 편집 중인 질문 배정 [{ch,q,a}]
 let modalQAN=0;            // 이 일정에서 질문 순서를 뽑은 횟수
+let modalQAMode=QA_CYCLE;  // 이 일정에서 쓸 뽑기 방식 (순환 / 랜덤)
 let modalAbsent=[];        // 이 일정에서 불참 처리한 스터디원 id 목록
 let lastRepeats=0;         // 직전 뽑기에서 이전 답변자와 겹친 챕터 수
 let lastOptions=0;         // 직전 뽑기에서 조건을 만족하는 서로 다른 조합 수
@@ -1262,6 +1332,7 @@ function renderChapSection(){
           }).join("")+`</ul>`
         : `<div class="none">선택된 챕터가 없어요.</div>`);
   renderAbsent();
+  renderQAMode();
   renderQANote();
 }
 /* 불참 토글: 스터디원별 버튼. 누르면 그 사람이 질문자·답변자인 배정을 비활성화 */
@@ -1288,6 +1359,19 @@ function persistAbsent(){
   const b=state.blocks.find(x=>x.id==editingId);
   if(b){ b.absent=modalAbsent.length?modalAbsent.slice():null; saveState(); }
 }
+/* 뽑기 방식(순환/랜덤) 선택 버튼 */
+function renderQAMode(){
+  const box=document.getElementById("mQAMode");
+  if(!box)return;
+  box.querySelectorAll(".qamodebtn").forEach(btn=>{
+    btn.classList.toggle("on",normMode(btn.dataset.mode)===modalQAMode);
+    btn.onclick=()=>{
+      modalQAMode=normMode(btn.dataset.mode);
+      try{localStorage.setItem(QAMODE_KEY,modalQAMode);}catch(e){}   // 다음 일정에도 같은 방식 기본값
+      renderChapSection();
+    };
+  });
+}
 /* 질문 배정 안내문구 */
 function renderQANote(){
   const n=members().filter(m=>(m.name||"").trim()).length;
@@ -1297,9 +1381,12 @@ function renderQANote(){
   const clr=document.getElementById("mClearQA");
   if(clr) clr.style.display = has ? "inline-block" : "none";
   if(!canEdit){   // 보기 전용: 관리자용 조작 안내는 감춘다
-    note.innerHTML = has ? `<b>질문자 → 답변자</b> 순이에요.` : `아직 질문 순서가 정해지지 않았어요.`;
+    note.innerHTML = has
+      ? `<b>질문자 → 답변자</b> 순이에요. (${modalQAMode===QA_RANDOM?"랜덤":"순환"} 배정)`
+      : `아직 질문 순서가 정해지지 않았어요.`;
     return;
   }
+  const rnd=modalQAMode===QA_RANDOM;
   note.innerHTML = n<2
     ? `설정 탭에서 <b>스터디원을 2명 이상</b> 등록하면 질문 순서를 뽑을 수 있어요.`
     : (modalQA&&modalQA.length
@@ -1310,7 +1397,9 @@ function renderQANote(){
               : lastOptions<=1
               ? ` <span style="color:var(--s3)">조건을 만족하는 조합이 이것뿐이라 다시 눌러도 그대로예요.</span>`
               : ` 같은 챕터의 <b>이전 답변자</b>는 피해서 배정했어요. 다시 누르면 다른 조합이 나와요.`)
-        : `누르면 스터디원 순서를 랜덤으로 섞어 <b>순환 구조</b>로 배정해요(예: b→a, a→c, c→b). 같은 챕터를 전에 답변한 사람은 피합니다.`);
+        : rnd
+          ? `누르면 순환에 얽매이지 않고 <b>완전 랜덤</b>으로 짝을 지어요. 대신 <b>1인당 질문 횟수는 동일</b>하게 맞춥니다(챕터 수가 인원으로 안 나눠떨어지면 1회 차이). 같은 챕터를 전에 답변한 사람은 피합니다.`
+          : `누르면 스터디원 순서를 랜덤으로 섞어 <b>순환 구조</b>로 배정해요(예: b→a, a→c, c→b). 같은 챕터를 전에 답변한 사람은 피합니다.`);
 }
 /* 현재 모달의 챕터 범위에 질문 배정 생성 → 즉시 저장 */
 function rollQA(){
@@ -1319,13 +1408,13 @@ function rollQA(){
   const total=effChapters(subj).length;
   if(!total){ alert("이 과목에 등록된 챕터가 없어요."); return; }
   const from=(parts>1)?chapSel.from:1, to=(parts>1)?chapSel.to:total;
-  const r=buildQA(from,to,subj,editingId,modalQA,modalQAN+1);
+  const r=buildQA(from,to,subj,editingId,modalQA,modalQAN+1,modalQAMode);
   if(!r){ alert("스터디원을 2명 이상 등록해 주세요. (설정 탭 → 스터디원 관리)"); return; }
   modalQA=r.qa; modalQAN++; lastRepeats=r.repeats; lastOptions=r.options;
   // 이미 등록된 일정이면 뽑는 즉시 저장 (취소해도 유지)
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    if(b){ b.qa=modalQA.map(x=>({...x})); b.qaN=modalQAN; saveState(); }
+    if(b){ b.qa=modalQA.map(x=>({...x})); b.qaN=modalQAN; b.qaMode=modalQAMode; saveState(); }
   }
   renderChapSection();
 }
@@ -1336,7 +1425,7 @@ function clearQA(){
   modalQA=null; modalQAN=0; modalAbsent=[]; lastRepeats=-1; lastOptions=0;
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    if(b){ b.qa=null; b.qaN=0; b.absent=null; saveState(); }
+    if(b){ b.qa=null; b.qaN=0; b.qaMode=null; b.absent=null; saveState(); }
   }
   renderChapSection();
 }
@@ -1425,7 +1514,7 @@ function openCreate(start,end){
   document.getElementById("mDone").checked=false;
   document.getElementById("mDelete").style.display="none";
   partsManual=false;
-  modalQA=null; modalQAN=0; modalAbsent=[]; lastRepeats=-1;
+  modalQA=null; modalQAN=0; modalAbsent=[]; lastRepeats=-1; modalQAMode=savedQAMode();
   refreshChap();
   setModalReadonly(false);
   updatePartHint();
@@ -1446,6 +1535,7 @@ function openEdit(id,readonly){
   partsManual=false;continued=false;
   modalQA=Array.isArray(b.qa)?b.qa.map(x=>({...x})):null;
   modalQAN=Number(b.qaN)||(modalQA&&modalQA.length?1:0);
+  modalQAMode=b.qaMode?normMode(b.qaMode):savedQAMode();   // 이 일정을 뽑을 때 쓴 방식
   modalAbsent=Array.isArray(b.absent)?b.absent.slice():[]; lastRepeats=-1;
   if((b.parts||1)>1&&b.chapFrom)chapSel={from:b.chapFrom,to:b.chapTo};else applyAutoChap();
   renderChapSection();
@@ -1484,11 +1574,12 @@ document.getElementById("mSave").onclick=()=>{
   const absent=qa.length?modalAbsent.filter(id=>qa.some(x=>x.q===id||x.a===id)):null;
   const absSave=absent&&absent.length?absent:null;
   const qn=qa.length?modalQAN:0;
+  const qmode=qa.length?modalQAMode:null;
   if(editingId){
     const b=state.blocks.find(x=>x.id==editingId);
-    Object.assign(b,{subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,qaN:qn,absent:absSave});
+    Object.assign(b,{subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,qaN:qn,qaMode:qmode,absent:absSave});
   }else{
-    state.blocks.push({id:Date.now()+Math.floor(Math.random()*1000),subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,qaN:qn,absent:absSave});
+    state.blocks.push({id:Date.now()+Math.floor(Math.random()*1000),subject,round,parts,part,start:s,end:e,done,chapFrom,chapTo,qa:qa.length?qa:null,qaN:qn,qaMode:qmode,absent:absSave});
     state.defRound=round;
   }
   saveState();closeModal();render();
