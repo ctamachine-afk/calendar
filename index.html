@@ -1381,9 +1381,7 @@ function renderQANote(){
   const clr=document.getElementById("mClearQA");
   if(clr) clr.style.display = has ? "inline-block" : "none";
   if(!canEdit){   // 보기 전용: 관리자용 조작 안내는 감춘다
-    note.innerHTML = has
-      ? `<b>질문자 → 답변자</b> 순이에요. (${modalQAMode===QA_RANDOM?"랜덤":"순환"} 배정)`
-      : `아직 질문 순서가 정해지지 않았어요.`;
+    note.innerHTML = has ? `<b>질문자 → 답변자</b> 순이에요.` : `아직 질문 순서가 정해지지 않았어요.`;
     return;
   }
   const rnd=modalQAMode===QA_RANDOM;
