@@ -131,8 +131,8 @@
   .qamodebtn:hover{color:var(--txt)}
   .qamodebtn.on{background:rgba(79,157,255,.16);color:var(--accent);font-weight:700}
   /* 불참 처리: 불참자 이름만 취소선, 상대(참석자)는 그대로 */
-  .chaplist li .qa .who.off,.asgtag .who.off{color:var(--muted);text-decoration:line-through;opacity:.65;font-weight:400}
-  .qa .offlbl{text-decoration:none;margin-left:4px;font-size:9.5px;color:var(--s4);
+  .chaplist li .qa .who.off,.asgtag .who.off,.bvpair .who.off{color:var(--muted);text-decoration:line-through;opacity:.65;font-weight:400}
+  .qa .offlbl,.bvpair .offlbl{text-decoration:none;margin-left:4px;font-size:9.5px;color:var(--s4);
     border:1px solid var(--s4);border-radius:6px;padding:0 4px;vertical-align:middle;display:inline-block}
   .absrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:9px}
   .absrow .abslbl{font-size:11px;color:var(--muted);margin-right:2px}
@@ -140,6 +140,59 @@
     border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer}
   .abschip:hover{border-color:var(--muted)}
   .abschip.on{background:rgba(255,107,157,.14);border-color:var(--s4);color:var(--s4);text-decoration:line-through}
+  /* ===== 크게 보기 (파트 범위 + 질문자/학습자) ===== */
+  .bigback{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;
+    align-items:center;justify-content:center;z-index:60;padding:16px}
+  .bigback.on{display:flex}
+  .bigbox{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    width:920px;max-width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden}
+  .bvhead{padding:15px 20px 12px;border-bottom:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+  .bvttl{font-size:19px;font-weight:700;display:flex;align-items:center;gap:8px;letter-spacing:-.3px}
+  .bvttl i{width:13px;height:13px;border-radius:4px;display:inline-block;flex:0 0 auto}
+  .bvmeta{font-size:13px;color:var(--muted)}
+  .bvmeta b{color:var(--txt)}
+  .bvclose{margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--muted);
+    border-radius:9px;padding:6px 12px;font-size:13px;flex:0 0 auto}
+  .bvclose:hover{color:var(--txt);border-color:var(--muted)}
+  .bvfilter{padding:10px 20px 11px;border-bottom:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+  .bvlbl{font-size:12px;color:var(--muted);flex:0 0 auto}
+  .bvchip{background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    border-radius:999px;padding:5px 12px;font-size:12.5px;cursor:pointer;flex:0 0 auto}
+  .bvchip:hover{border-color:var(--muted)}
+  .bvchip.on{background:rgba(79,157,255,.16);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .bvchip .n{color:var(--muted);font-weight:400;font-size:11.5px;margin-left:5px}
+  .bvchip.on .n{color:var(--accent)}
+  .bvrole{display:inline-flex;background:var(--panel2);border:1px solid var(--line);
+    border-radius:999px;padding:2px;gap:2px;flex:0 0 auto}
+  .bvrolebtn{background:transparent;border:0;color:var(--muted);border-radius:999px;
+    padding:4px 11px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .bvrolebtn:hover{color:var(--txt)}
+  .bvrolebtn.on{background:rgba(124,92,255,.18);color:var(--accent2);font-weight:700}
+  .bvrole.dim{opacity:.45;pointer-events:none}
+  .bvbody{padding:13px 20px 20px;overflow:auto;-webkit-overflow-scrolling:touch}
+  .bvrow{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:11px 13px;
+    background:var(--panel2);border:1px solid var(--line);border-radius:11px;margin-bottom:6px}
+  .bvrow.head{background:transparent;border:0;padding:13px 2px 3px;margin-bottom:2px}
+  .bvrow.head .bvname{font-size:15.5px;font-weight:700}
+  .bvno{color:var(--muted);font-size:13px;min-width:26px;text-align:right;flex:0 0 auto}
+  .bvname{font-size:15.5px;font-weight:600;flex:1;min-width:140px;word-break:break-word;line-height:1.35}
+  .bvsub .bvname{font-size:14.5px;font-weight:500;color:var(--txt)}
+  .bvsub{padding-left:26px}
+  .bvsub .bvno:before{content:"└";color:var(--muted)}
+  .bvcnt{font-size:12px;color:var(--muted);font-weight:400;flex:0 0 auto}
+  .bvpair{display:flex;align-items:center;gap:9px;font-size:15px;flex:0 0 auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:5px 14px}
+  .bvpair .arw{color:var(--accent);font-weight:800}
+  .bvpair .who{font-weight:600}
+  .bvpair .who.hl{color:var(--accent)}
+  .bvpair.none{color:var(--muted);font-size:12.5px;font-weight:400;background:transparent;border-style:dashed}
+  .bvsum{font-size:12.5px;color:var(--muted);margin:2px 0 10px}
+  .bvsum b{color:var(--txt)}
+  .bvnone{color:var(--muted);font-size:14px;padding:22px 4px;text-align:center}
+  .bvlegend{font-size:12px;color:var(--muted)}
+  .bvlegend b{color:var(--accent)}
   /* 질문 기록 탭 */
   .logsubj{margin-bottom:18px}
   .logsubj:last-child{margin-bottom:0}
@@ -221,6 +274,15 @@
     .bar .lbl .rd{margin-left:4px;font-size:10px}
     .modal{padding:16px 15px;max-height:88vh;overflow:auto;-webkit-overflow-scrolling:touch}
     .modal .two{gap:7px}
+    .bigback{padding:0}
+    .bigbox{border-radius:0;max-height:100vh;height:100%;border:none}
+    .bvhead{padding:12px 13px 10px} .bvfilter{padding:9px 13px} .bvbody{padding:11px 13px 24px}
+    .bvttl{font-size:17px}
+    .bvname{font-size:14.5px;min-width:calc(100% - 38px)}
+    .bvsub .bvname{font-size:14px}
+    .bvsub{padding-left:14px}
+    .bvpair{font-size:14px;padding:4px 11px;margin-left:26px}
+    .bvrow{padding:9px 11px}
     .stat{min-width:calc(50% - 5px)}
     .rcard{min-width:100%}
   }
@@ -352,6 +414,7 @@
       </div>
       <div class="chaplist" id="mChapters"></div>
       <div class="qarow">
+        <button class="btn ghost sm" id="mBigView" type="button">🔍 크게 보기</button>
         <div class="qamode adminOnly" id="mQAMode">
           <button type="button" class="qamodebtn" data-mode="cycle">🔁 순환</button>
           <button type="button" class="qamodebtn" data-mode="random">🎯 랜덤</button>
@@ -379,6 +442,19 @@
       <button class="btn ghost sm" id="mCancel">취소</button>
       <button class="btn sm" id="mSave">저장</button>
     </div>
+  </div>
+</div>
+
+<!-- 크게 보기: 파트 범위 + 질문자/학습자 -->
+<div class="bigback" id="bigback">
+  <div class="bigbox">
+    <div class="bvhead">
+      <div class="bvttl" id="bvTitle"></div>
+      <div class="bvmeta" id="bvMeta"></div>
+      <button class="bvclose" id="bvClose" type="button">✕ 닫기</button>
+    </div>
+    <div class="bvfilter" id="bvFilter"></div>
+    <div class="bvbody" id="bvBody"></div>
   </div>
 </div>
 
@@ -749,7 +825,7 @@ function setEdit(on){
     ? (touch
         ? `💡 날짜를 <b>탭</b>하면 그 하루로 일정이 만들어지고, <b>꾹 눌렀다가 밀면</b> 여러 날을 한 번에 고를 수 있어요. 막대는 <b>탭</b>하면 수정·완료체크·삭제, <b>꾹 눌렀다가 밀면</b> 기간이 옮겨집니다.`
         : `💡 빈 날짜를 <b>드래그</b>하면 학습 기간이 만들어지고, 막대를 <b>클릭</b>하면 수정·완료체크·삭제할 수 있어요.`)
-    : `👀 <b>보기 전용</b> 캘린더예요. 관리자는 위 <b>관리자</b> 버튼에서 비밀번호로 로그인하면 수정할 수 있어요. 막대를 ${touch?"탭":"클릭"}하면 상세(챕터)를 볼 수 있습니다.`;
+    : `👀 <b>보기 전용</b> 캘린더예요. 관리자는 위 <b>관리자</b> 버튼에서 비밀번호로 로그인하면 수정할 수 있어요. 막대를 ${touch?"탭":"클릭"}하면 상세(챕터)를 볼 수 있고, <b>🔍 크게 보기</b>로 파트 범위와 질문자·학습자를 한눈에 볼 수 있어요.`;
 }
 function tryUnlock(){
   const inp=document.getElementById("pinInput"), btn=document.getElementById("pinBtn");
@@ -1068,7 +1144,12 @@ function renderBlist(){
     ${chapLabel(b)?`<span class="muted">${chapLabel(b)}</span>`:''}
     <span class="muted">${fmtK(parse(b.start))}~${fmtK(parse(b.end))} · ${dayCount(b)}일</span>
     ${b.done?'<span style="color:var(--s7)">✓ 완료</span>':''}
+    <a class="mini bv" data-id="${b.id}" style="margin-left:auto">🔍 크게 보기</a>
     <span class="del" data-id="${b.id}">✕</span></div>`).join("");
+  el.querySelectorAll(".bv").forEach(x=>x.onclick=()=>{
+    const b=state.blocks.find(v=>v.id==x.dataset.id);
+    if(b)openBig(bigCtxFromBlock(b));
+  });
   el.querySelectorAll(".del").forEach(x=>x.onclick=()=>{state.blocks=state.blocks.filter(b=>b.id!=x.dataset.id);saveState();render();});
 }
 
@@ -1427,6 +1508,160 @@ function clearQA(){
   }
   renderChapSection();
 }
+/* ================== 크게 보기 (파트 범위 + 질문자/학습자) ==================
+   한 학습(일정)의 파트 챕터·섹션 범위를 큰 화면으로 펼쳐 보여주고,
+   특정 질문자/학습자(답변자)만 골라서 볼 수 있게 한다. */
+let bigCtx=null;                      // 지금 크게 보기로 열어둔 학습 정보
+let bigFilter={id:"",role:"all"};     // id "" = 전체 / role: all|q|a
+const BV_ROLES=[["all","전체"],["q","질문자"],["a","학습자(답변자)"]];
+/* 등록된 일정(블록) → 크게 보기 정보 */
+function bigCtxFromBlock(b){
+  const total=effChapters(b.subject).length;
+  const multi=(b.parts||1)>1&&b.chapFrom;
+  const from=multi?Math.min(b.chapFrom,total||1):1;
+  const to=multi?Math.min(Math.max(b.chapTo||from,from),total||1):total;
+  return {subject:b.subject,round:b.round,parts:b.parts||1,part:b.part||1,
+    start:b.start,end:b.end,done:!!b.done,from,to,
+    qa:Array.isArray(b.qa)?b.qa.map(x=>({...x})):[],
+    absent:Array.isArray(b.absent)?b.absent.slice():[]};
+}
+/* 지금 열려 있는 모달(저장 전 상태 포함) → 크게 보기 정보 */
+function bigCtxFromModal(){
+  const subject=document.getElementById("mSubject").value;
+  const parts=Math.max(1,Number(document.getElementById("mParts").value)||1);
+  const total=effChapters(subject).length;
+  return {subject,round:Number(document.getElementById("mRound").value)||1,parts,
+    part:Math.max(1,Math.min(parts,Number(document.getElementById("mPart").value)||1)),
+    start:document.getElementById("mStart").value,end:document.getElementById("mEnd").value,
+    done:document.getElementById("mDone").checked,
+    from:(parts>1)?chapSel.from:1, to:(parts>1)?chapSel.to:total,
+    qa:(modalQA||[]).map(x=>({...x})), absent:modalAbsent.slice()};
+}
+function openBig(ctx){
+  if(!ctx||!ctx.subject)return;
+  bigCtx=ctx; bigFilter={id:"",role:"all"};
+  renderBig();
+  document.getElementById("bigback").classList.add("on");
+}
+function closeBig(){
+  document.getElementById("bigback").classList.remove("on");
+  bigCtx=null;
+}
+/* 이 배정이 지금 필터에 걸리는지 */
+function bigMatch(x){
+  if(!bigFilter.id)return true;            // 전체 보기
+  if(!x||qaOrphan(x))return false;         // 배정 없는 챕터는 필터 중엔 숨김
+  if(bigFilter.role==="q")return x.q===bigFilter.id;
+  if(bigFilter.role==="a")return x.a===bigFilter.id;
+  return x.q===bigFilter.id||x.a===bigFilter.id;
+}
+function renderBig(){
+  if(!bigCtx)return;
+  const c=bigCtx;
+  const total=effChapters(c.subject).length;
+  const range=(c.from&&c.to)?(c.from===c.to?`Ch.${c.from}`:`Ch.${c.from}~${c.to}`):"";
+  document.getElementById("bvTitle").innerHTML=
+    `<i style="background:${colorOf(c.subject)}"></i>${esc(c.subject)}${esc(c.parts>1?` (${c.part}/${c.parts})`:"")}`;
+  const days=(c.start&&c.end)?`${fmtK(parse(c.start))}~${fmtK(parse(c.end))}`:"";
+  document.getElementById("bvMeta").innerHTML=
+    `<b>${c.round}회독</b>${range?` · <b>${range}</b> (${Math.max(0,c.to-c.from+1)}/${total}개 챕터)`:""}`
+    +`${days?` · ${days}`:""}${c.done?` · <span style="color:var(--s7)">✓ 완료</span>`:""}`;
+  renderBigFilter();
+  renderBigBody();
+}
+/* 질문자/학습자 필터 줄 */
+function renderBigFilter(){
+  const box=document.getElementById("bvFilter"), c=bigCtx;
+  // 이 학습의 배정에 실제로 등장하는 사람만 (스터디원 순서대로, 삭제된 사람은 뒤에)
+  const cnt={}; const order=[];
+  c.qa.forEach(x=>{
+    if(qaOrphan(x))return;
+    [["q",x.q],["a",x.a]].forEach(([k,id])=>{
+      if(!cnt[id]){cnt[id]={q:0,a:0};order.push(id);}
+      cnt[id][k]++;
+    });
+  });
+  if(!order.length){
+    box.innerHTML=`<span class="bvlbl">아직 이 파트의 질문 순서가 정해지지 않았어요. 챕터 범위만 표시됩니다.</span>`;
+    return;
+  }
+  const ms=members().map(m=>m.id).filter(id=>cnt[id]);
+  const ids=ms.concat(order.filter(id=>!ms.includes(id)));
+  const chip=(id,label,c2)=>{
+    const on=bigFilter.id===id;
+    const n=c2?`<span class="n">질문 ${c2.q} · 답변 ${c2.a}</span>`:"";
+    return `<button type="button" class="bvchip${on?' on':''}" data-id="${escAttr(id)}">${label}${n}</button>`;
+  };
+  box.innerHTML=`<span class="bvlbl">보기</span>`
+    + chip("","전체",null)
+    + ids.map(id=>chip(id,esc(memberName(id)),cnt[id])).join("")
+    + `<div class="bvrole${bigFilter.id?"":" dim"}">`
+      + BV_ROLES.map(([v,l])=>`<button type="button" class="bvrolebtn${bigFilter.role===v?' on':''}" data-role="${v}">${l}</button>`).join("")
+    + `</div>`;
+  box.querySelectorAll(".bvchip").forEach(b=>b.onclick=()=>{
+    bigFilter.id=b.dataset.id;
+    if(!bigFilter.id)bigFilter.role="all";
+    renderBig();
+  });
+  box.querySelectorAll(".bvrolebtn").forEach(b=>b.onclick=()=>{
+    bigFilter.role=b.dataset.role; renderBig();
+  });
+}
+/* 챕터·섹션 목록 (큰 글씨 + 질문자 → 학습자) */
+function renderBigBody(){
+  const c=bigCtx, subj=c.subject;
+  const findQA=(ch,sec)=>c.qa.find(v=>v.ch===ch&&(v.sec||0)===sec);
+  const who=(id,hl)=>{
+    const off=absHas(c.absent,id);
+    return `<span class="who${off?' off':''}${hl?' hl':''}">${esc(memberName(id))}${off?'<span class="offlbl">불참</span>':''}</span>`;
+  };
+  const pair=x=>{
+    if(!x||qaOrphan(x))return `<span class="bvpair none">질문 순서 없음</span>`;
+    const f=bigFilter;
+    return `<span class="bvpair">${who(x.q,f.id===x.q&&f.role!=="a")}<b class="arw">→</b>${who(x.a,f.id===x.a&&f.role!=="q")}</span>`;
+  };
+  const row=(no,name,x,sec)=>`<div class="bvrow"><span class="bvno">${sec?"":no}</span>`
+    +`<span class="bvname">${esc(name)}</span>${pair(x)}</div>`;
+  const pairs=effRawPairs(subj).filter(p=>p.ch>=c.from&&p.ch<=c.to);
+  let nUnit=0, nShown=0, html="";
+  pairs.forEach(p=>{
+    const secs=sectionsAt(subj,p.ri);
+    if(secs.length){
+      let sub="";
+      secs.forEach((sn,i)=>{
+        nUnit++;
+        const x=findQA(p.ch,i+1);
+        if(!bigMatch(x))return;
+        nShown++; sub+=row("",sn,x,true);
+      });
+      if(sub) html+=`<div class="bvrow head"><span class="bvno">${p.ch}</span>`
+        +`<span class="bvname">${esc(p.name)}</span><span class="bvcnt">${secs.length}섹션</span></div>`
+        +`<div class="bvsub">${sub}</div>`;
+    }else{
+      nUnit++;
+      const x=findQA(p.ch,0);
+      if(!bigMatch(x))return;
+      nShown++; html+=row(p.ch,p.name,x,false);
+    }
+  });
+  const hasQA=c.qa.some(x=>!qaOrphan(x));
+  const sum=`<div class="bvsum">`
+    + (bigFilter.id
+        ? `<b>${esc(memberName(bigFilter.id))}</b> ${bigFilter.role==="q"?"질문":bigFilter.role==="a"?"학습·답변":"참여"} 항목 <b>${nShown}</b>개 / 전체 ${nUnit}개`
+        : `전체 <b>${nUnit}</b>개 항목`)
+    + (hasQA?` <span class="bvlegend">· <b>질문자</b> → 학습자(답변자)</span>`:"")
+    + `</div>`;
+  document.getElementById("bvBody").innerHTML = sum + (html
+    || `<div class="bvnone">${nUnit?"조건에 맞는 챕터가 없어요. 다른 스터디원을 골라 보세요.":"이 범위에 표시할 챕터가 없어요."}</div>`);
+}
+document.getElementById("bvClose").onclick=closeBig;
+document.getElementById("bigback").onclick=e=>{ if(e.target.id==="bigback")closeBig(); };
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Escape")return;
+  if(document.getElementById("bigback").classList.contains("on")){ closeBig(); return; }
+  if(document.getElementById("backdrop").classList.contains("on")) closeModal();
+});
+
 function onChapSelChange(which){
   let from=Number(document.getElementById("mChapFrom").value)||1;
   let to=Number(document.getElementById("mChapTo").value)||1;
@@ -1493,6 +1728,7 @@ document.getElementById("mPart").oninput=()=>{continued=false;applyAutoChap();re
 document.getElementById("mRound").oninput=()=>{refreshChap();updatePartHint();};
 document.getElementById("mChapFrom").onchange=()=>onChapSelChange("from");
 document.getElementById("mChapTo").onchange=()=>onChapSelChange("to");
+document.getElementById("mBigView").onclick=()=>openBig(bigCtxFromModal());
 document.getElementById("mRollQA").onclick=rollQA;
 document.getElementById("mClearQA").onclick=clearQA;
 document.getElementById("memAdd").onclick=addMember;
